@@ -19,6 +19,9 @@ type Descriptor struct {
 	// EndpointParameters are network-destination inputs, not arbitrary URL data.
 	// Hosted adapters should omit these from schemas and reject supplied values.
 	EndpointParameters []string `json:"endpointParameters,omitempty"`
+	// PayloadSchema is the JSON Schema for the object carried in `data`, when the
+	// operation declares a payload contract. The CLI enforces the same contract.
+	PayloadSchema map[string]any `json:"payloadSchema,omitempty"`
 }
 
 func Descriptors(root *Definition) ([]Descriptor, error) {
@@ -46,7 +49,7 @@ func Descriptors(root *Definition) ([]Descriptor, error) {
 			if description == "" {
 				description = strings.TrimSpace(d.Short)
 			}
-			result = append(result, Descriptor{Name: name, Path: append([]string(nil), path...), Description: description, InputSchema: schema, EndpointParameters: d.EndpointParameters()})
+			result = append(result, Descriptor{Name: name, Path: append([]string(nil), path...), Description: description, InputSchema: schema, EndpointParameters: d.EndpointParameters(), PayloadSchema: d.payload.JSONSchema()})
 		}
 		for _, child := range d.Commands() {
 			if err := walk(child, append(append([]string(nil), path...), child.Name())); err != nil {

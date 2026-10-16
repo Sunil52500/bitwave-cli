@@ -45,6 +45,9 @@ type adminOperation struct {
 	AutoETag      bool
 	FeatureFlag   string
 	Notes         string
+	// Payload is the contract for the --data/--input object. It is enforced before
+	// any preview or submission and published to hosted adapters.
+	Payload *op.Payload
 }
 
 type adminOperationFlags struct {
@@ -129,6 +132,7 @@ func newAdminOperationCmd(operation adminOperation) *op.Definition {
 			return runAdminOperation(cmd, operation, args, f)
 		},
 	}
+	cmd.SetPayload(operation.Payload)
 	cmd.Flags().StringVar(&f.orgID, "org", "", "Organization ID override")
 	cmd.Flags().StringVarP(&f.input, "input", "i", "", "JSON request/variables file (`-` reads stdin)")
 	cmd.Flags().StringVar(&f.data, "data", "", "Inline JSON request/variables object")
@@ -152,8 +156,13 @@ func runAdminOperation(cmd *op.Call, operation adminOperation, args []string, f 
 	if err != nil {
 		return err
 	}
-	if operation.InputRequired && len(input) == 0 {
+	if operation.InputRequired && operation.Payload == nil && len(input) == 0 {
 		return errors.New("this operation requires a JSON object via --input or --data")
+	}
+	if payload, candidate := adminPayloadFor(operation, input); payload != nil {
+		if err := payload.Validate(candidate); err != nil {
+			return payloadError(cmd, operation.Name, orgID, err)
+		}
 	}
 	mayWrite := operation.Method != http.MethodGet && operation.Method != http.MethodHead
 	if operation.Protocol == adminGraphQL {
@@ -227,7 +236,8 @@ func runAdminOperation(cmd *op.Call, operation adminOperation, args []string, f 
 		preview["headers"] = headers
 	}
 	if f.dryRun {
-		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation.Name, Organization: orgID, DryRun: true, Request: preview})
+		notSubmitted := false
+		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation.Name, Organization: orgID, DryRun: true, Submitted: &notSubmitted, Note: dryRunNote, Request: preview})
 	}
 
 	response, err := client.RawRequestDetailed(cmd.Context(), service, method, path, body, headers)
@@ -301,6 +311,13 @@ func writeAdminResponse(cmd *op.Call, filename string, operation adminOperation,
 		"area": operation.Area, "operation": operation.Name,
 		"statusCode": response.StatusCode, "result": result,
 	}
+	if operation.Document == gqlSystemJobRun {
+		if jobRunID := startedJobRunID(result); jobRunID != "" {
+			envelope["outcome"] = "accepted"
+			envelope["jobRunId"] = jobRunID
+			envelope["note"] = "The backend accepted the job and returned its run ID. Acceptance does not mean the job has progressed or finished; check its status and verify the outcome separately."
+		}
+	}
 	if etag := response.Header.Get("ETag"); etag != "" {
 		envelope["etag"] = etag
 	}
@@ -343,4 +360,27 @@ func sortedAdminAreas() []string {
 	}
 	sort.Strings(areas)
 	return areas
+}
+
+const dryRunNote = "Preview only. Nothing was submitted to Bitwave. A preview does not prove the backend will accept the request or that a job will start."
+
+// startedJobRunID extracts the run ID from a runSystemJob GraphQL response.
+func startedJobRunID(result any) string {
+	body, _ := result.(map[string]any)
+	data, _ := body["data"].(map[string]any)
+	id, _ := data["runSystemJob"].(string)
+	return id
+}
+
+// payloadError reports a local payload failure. It is not retryable as-is: the
+// caller must change the payload, so the suggestion says so explicitly.
+func payloadError(cmd *op.Call, operation, orgID string, err error) error {
+	_ = writeJSON(cmd.OutOrStdout(), mutationEnvelope{
+		SchemaVersion: "1", Status: "error", Operation: operation, Organization: orgID,
+		Error: &reportError{
+			Code: "invalid_payload", Message: err.Error(), Retryable: false,
+			Suggestion: "Fix the fields named in the message and retry once with a corrected payload. Do not resubmit the same payload.",
+		},
+	})
+	return err
 }

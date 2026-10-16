@@ -3,6 +3,7 @@ package operations
 import (
 	"net/http"
 
+	op "github.com/bitwave-io/bitwave-cli/internal/operation"
 	"github.com/bitwave-io/bitwave-cli/internal/orgreports"
 )
 
@@ -33,6 +34,10 @@ func withDefaults(operation adminOperation, defaults map[string]any) adminOperat
 }
 func withQuery(operation adminOperation, query ...string) adminOperation {
 	operation.DefaultQuery = query
+	return operation
+}
+func withPayload(operation adminOperation, payload *op.Payload) adminOperation {
+	operation.Payload = payload
 	return operation
 }
 func withNotes(operation adminOperation, notes string) adminOperation {
@@ -94,10 +99,10 @@ func adminOperations() []adminOperation {
 		withDefaults(adminGraphQLOperation("system-jobs", "system-job-mark-reconciled", "mark-reconciled", "Mark matching transactions reconciled", gqlSystemJobRun), bulkTransactionDefaults("markReconciled")),
 		withDefaults(adminGraphQLOperation("system-jobs", "system-job-mark-unreconciled", "mark-unreconciled", "Mark matching transactions unreconciled", gqlSystemJobRun), bulkTransactionDefaults("markUnreconciled")),
 		withDefaults(adminGraphQLOperation("system-jobs", "system-job-uncategorize", "uncategorize", "Uncategorize matching transactions", gqlSystemJobRun), bulkTransactionDefaults("uncategorize")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-failed", "reprice-failed", "Reprice failed-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-failed-to-price-transactions", "action": "repriceFailedToPriceTransactions"}),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-ready", "reprice-ready", "Reprice priced and ready-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-priced-and-ready-to-price-transactions", "action": "repricePricedAndReadyToPriceTransactions"}),
+		withPayload(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-failed", "reprice-failed", "Reprice failed-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-failed-to-price-transactions", "action": "repriceFailedToPriceTransactions"}), repricePayload()),
+		withPayload(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-ready", "reprice-ready", "Reprice priced and ready-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-priced-and-ready-to-price-transactions", "action": "repricePricedAndReadyToPriceTransactions"}), repricePayload()),
 		withDefaults(adminGraphQLOperation("system-jobs", "system-job-process-needs-review", "process-needs-review", "Process needs-review transactions", gqlSystemJobRun), map[string]any{"systemJobId": "process-needs-review-transactions", "action": "processNeedsReviewTransactions", "resolution": "accept", "transactionState": "open-needs-review"}),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprocess-rollups", "reprocess-rollups", "Reprocess rollup-parent transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprocess-rollup-parent-txns", "action": "reprocessRollupParentTxns", "processNewTxns": true, "updateChildrenForExistingParent": false}),
+		withPayload(withInput(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprocess-rollups", "reprocess-rollups", "Reprocess rollup-parent transactions for one wallet and date range", gqlSystemJobRun), map[string]any{"systemJobId": "reprocess-rollup-parent-txns", "action": "reprocessRollupParentTxns", "processNewTxns": true, "updateChildrenForExistingParent": false})), rollupReprocessPayload()),
 		withInput(adminGraphQLOperation("system-jobs", "system-job-csv-categorize", "csv-categorize", "Start a previously uploaded categorization import", gqlRunImport)),
 
 		// Wallet administration

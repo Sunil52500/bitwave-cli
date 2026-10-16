@@ -31,6 +31,8 @@ type mutationEnvelope struct {
 	Operation     string       `json:"operation"`
 	Organization  string       `json:"organization"`
 	DryRun        bool         `json:"dryRun,omitempty"`
+	Submitted     *bool        `json:"submitted,omitempty"`
+	Note          string       `json:"note,omitempty"`
 	Request       any          `json:"request,omitempty"`
 	Result        any          `json:"result,omitempty"`
 	Error         *reportError `json:"error,omitempty"`
