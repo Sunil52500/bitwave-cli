@@ -19,3 +19,12 @@ type APIError = apierr.Error
 // matched ValidationError's Error(), not a wrapping error's text: wrappers may
 // contain user input. Other error types, including APIError, remain untrusted.
 type ValidationError = operation.ValidationError
+
+// GraphQLError is a Bitwave platform GraphQL response that carried errors: the
+// server answered and refused the request. Messages remain untrusted.
+type GraphQLError = apierr.GraphQLError
+
+// BatchError reports a batch mutation (for example org wallets add) in which
+// some items failed. Its Failures are reachable through errors.As, so a
+// per-item GraphQLError or APIError can be inspected; their text is untrusted.
+type BatchError = operation.BatchError

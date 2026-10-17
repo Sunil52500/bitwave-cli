@@ -104,3 +104,14 @@ func hintFor(status int) string {
 		return ""
 	}
 }
+
+// GraphQLError is a GraphQL response that carried errors: the server answered
+// and refused the request, so nothing about it is a transport failure. The
+// messages come from the server and are untrusted.
+type GraphQLError struct {
+	Messages []string
+}
+
+func (e *GraphQLError) Error() string {
+	return "GraphQL: " + strings.Join(e.Messages, "; ")
+}
