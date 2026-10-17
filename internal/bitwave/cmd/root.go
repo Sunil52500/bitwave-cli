@@ -69,13 +69,13 @@ commands such as ` + "`report`" + `, ` + "`transaction`" + `, ` + "`inventory`" 
 not require a ledger workspace.
 
 Modes:
-  - Local (default): files live on disk. No auth needed. ` + "`bitwave share`" + ` also
-    works anonymously in local mode (the recipient is the one who signs in
-    to adopt the workspace).
+  - Local (default): files live on disk. No auth needed.
   - Cloud (` + "`bitwave init --cloud`" + `): backed by Bitwave's workspace ledger
     service under your org. Requires ` + "`bitwave auth login`" + ` and
     ` + "`bitwave org use`" + `. The workspace ledger remains distinct from the
-    Bitwave organization-product commands listed above.
+    Bitwave organization-product commands listed above. Sharing
+    (` + "`bitwave share`" + `) is a cloud-workspace feature: every shared workspace
+    belongs to an org.
 
 Sign in and select a Bitwave organization:
   bitwave auth login

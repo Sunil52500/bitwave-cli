@@ -586,10 +586,14 @@ the journal file or re-running `bitwave expense new` with the same `--report`.
 
 ## Sharing
 
+Sharing is a cloud-workspace feature (`bitwave init --cloud`): every shared
+workspace belongs to an org, which is what bounds who may read it. A local
+workspace cannot be shared.
+
 ```sh
 $ bitwave share --to colleague@example.com
 sent invite to colleague@example.com — they'll receive a tokenized link
-to read this workspace
+to read this journal
 ```
 
 Read-only by default. Write access is a server-side capability gate;
