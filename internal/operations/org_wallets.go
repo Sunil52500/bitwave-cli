@@ -3,7 +3,6 @@ package operations
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -194,6 +193,15 @@ staking contract the position lives in (batch JSON: "type": "defi" plus
 "vaultAddress"). DeFi wallets are synced by sync-coordinator; after creating
 one, run 'bitwave org wallets defi-schedule WALLET' to start the position sync.
 
+Each wallet needs a network and an address. The name defaults to the network
+name and a shortened address (for example "Ethereum 0xfc48...1ee3"). In an
+organization that uses subsidiaries the wallet must belong to one: when the
+organization has only one subsidiary it is used, otherwise pass --subsidiary
+(list them with 'bitwave org admin subsidiaries list' and ask which one owns
+the wallet). Pass --yes to create; --dry-run only prints the request and does
+not check it with the server. An address already in the organization is
+skipped, not added again.
+
 Creating a wallet starts asynchronous ingestion. Data typically appears within
 15 minutes but can take up to 24 hours depending on transaction history volume
 and network load.`,
@@ -201,7 +209,7 @@ and network load.`,
 	}
 	addMutationFlags(cmd, &f.transactionMutationFlags)
 	cmd.Flags().StringVarP(&f.input, "input", "i", "", "Wallet JSON file, or - for stdin")
-	cmd.Flags().StringVar(&f.name, "name", "", "Wallet name (single-wallet mode)")
+	cmd.Flags().StringVar(&f.name, "name", "", "Wallet name (single-wallet mode; defaults to network and shortened address)")
 	cmd.Flags().StringVar(&f.walletType, "type", orgWalletTypeBlockchain, "Wallet kind: blockchain or defi")
 	cmd.Flags().StringVar(&f.address, "address", "", "Wallet address or HD derivation key")
 	cmd.Flags().StringVar(&f.vaultAddress, "vault-address", "", "DeFi pool / vault / staking contract address (required with --type defi)")
@@ -229,7 +237,7 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 		}
 	}
 	if f.concurrency < 1 || f.concurrency > 50 {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("--concurrency must be between 1 and 50"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewValidationError("--concurrency must be between 1 and 50"))
 	}
 	orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
 	if err != nil {
@@ -244,7 +252,7 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewValidationError("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 
 	// Resolve the token once before fan-out. Refreshing and rewriting the same
@@ -255,14 +263,19 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	client.TokenResolver = func() (string, error) { return token, nil }
-	if err := validateWalletSubsidiaries(cmd, client, orgID, inputs); err != nil {
+	if err := resolveWalletSubsidiaries(cmd, client, orgID, inputs); err != nil {
 		return mutationError(cmd, operation, f.jsonOutput, err)
+	}
+	// A defaulted subsidiary changes the payload the preview showed.
+	for i := range inputs {
+		requests[i] = buildOrgWalletPayload(inputs[i])
 	}
 	existing, err := client.Wallets(cmd.Context(), orgID)
 	if err != nil {
 		return mutationError(cmd, operation, f.jsonOutput, fmt.Errorf("check existing wallets: %w", err))
 	}
 	results := make([]map[string]any, len(inputs))
+	failures := make([]error, len(inputs))
 	jobs := make(chan int)
 	workerCount := min(f.concurrency, len(inputs))
 	var workers sync.WaitGroup
@@ -274,6 +287,7 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 				input := inputs[i]
 				wallet, createErr := client.CreateOrgWallet(cmd.Context(), orgID, requests[i], nil)
 				if createErr != nil {
+					failures[i] = createErr
 					results[i] = map[string]any{"status": "failed", "input": input, "error": createErr.Error()}
 					continue
 				}
@@ -319,7 +333,13 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 	envelope := mutationEnvelope{SchemaVersion: "1", Status: status, Operation: operation, Organization: orgID, Result: map[string]any{"created": created, "skipped": skipped, "failed": failed, "concurrency": workerCount, "wallets": results, "syncGuidance": syncGuidance}}
 	if failed > 0 {
 		_ = writeJSON(cmd.OutOrStdout(), envelope)
-		return fmt.Errorf("organization wallets: %d created, %d skipped, %d failed", created, skipped, failed)
+		batch := &op.BatchError{Summary: fmt.Sprintf("organization wallets: %d created, %d skipped, %d failed", created, skipped, failed), Created: created, Skipped: skipped}
+		for _, failure := range failures {
+			if failure != nil {
+				batch.Failures = append(batch.Failures, failure)
+			}
+		}
+		return batch
 	}
 	human := fmt.Sprintf("organization wallets: %d created, %d skipped\n%s\nCheck progress: bitwave transaction search --wallet WALLET_NAME --limit 1 --json\n", created, skipped, organizationWalletSyncExpectation)
 	return outputMutation(cmd, f.jsonOutput, envelope, human)
@@ -373,53 +393,73 @@ func normalizeAndValidateOrgWallet(input *orgWalletInput) error {
 	if alias := organizationWalletNetworkAliases[input.NetworkID]; alias != "" {
 		input.NetworkID = alias
 	}
-	if input.Name == "" {
-		return errors.New("name is required")
-	}
+	// Every refusal below is static text: hosted adapters may show it as is.
 	if input.Address == "" {
-		return errors.New("address is required")
+		return op.NewValidationError("address is required")
 	}
 	if input.NetworkID == "" {
-		return errors.New("networkId is required")
+		return op.NewValidationError("networkId is required")
 	}
 	if input.Type == "" {
 		input.Type = orgWalletTypeBlockchain
 	}
 	if input.Type != orgWalletTypeBlockchain && input.Type != orgWalletTypeDefi {
-		return fmt.Errorf("type must be %s or %s", orgWalletTypeBlockchain, orgWalletTypeDefi)
+		return op.NewValidationError("type must be " + orgWalletTypeBlockchain + " or " + orgWalletTypeDefi)
 	}
 	if input.AddressType == "" {
 		input.AddressType = "address"
 	}
 	if input.AddressType != "address" && input.AddressType != "hd" {
-		return errors.New("addressType must be address or hd")
+		return op.NewValidationError("addressType must be address or hd")
 	}
 	if input.Type == orgWalletTypeDefi {
 		if input.VaultAddress == "" {
-			return errors.New("vaultAddress is required for defi wallets")
+			return op.NewValidationError("vaultAddress is required for defi wallets")
 		}
 		if strings.Contains(input.VaultAddress, " ") {
-			return errors.New("vaultAddress cannot contain spaces")
+			return op.NewValidationError("vaultAddress cannot contain spaces")
 		}
 		if input.AddressType != "address" {
-			return errors.New("defi wallets require addressType address")
+			return op.NewValidationError("defi wallets require addressType address")
 		}
 		if input.ViewKey != "" {
-			return errors.New("defi wallets do not accept viewKey")
+			return op.NewValidationError("defi wallets do not accept viewKey")
 		}
 	} else if input.VaultAddress != "" || input.Protocol != "" {
-		return errors.New("vaultAddress and protocol require type defi")
+		return op.NewValidationError("vaultAddress and protocol require type defi")
 	}
 	if input.AddressType == "hd" && input.NetworkID != "btc" && input.NetworkID != "dash" {
-		return fmt.Errorf("HD wallets are supported only for btc and dash, not %s", input.NetworkID)
+		return fmt.Errorf("network %s: %w", input.NetworkID, op.NewValidationError("HD wallets are supported only for btc and dash"))
 	}
 	if input.SyncStartDateSEC < 0 {
-		return errors.New("syncStartDateSEC cannot be negative")
+		return op.NewValidationError("syncStartDateSEC cannot be negative")
 	}
 	if strings.TrimSpace(input.Description) != "" {
-		return errors.New("the Bitwave WalletInput contract does not accept description during creation")
+		return op.NewValidationError("the Bitwave WalletInput contract does not accept description during creation")
+	}
+	if input.Name == "" {
+		input.Name = defaultOrgWalletName(*input)
 	}
 	return nil
+}
+
+// defaultOrgWalletName names a wallet the caller did not name after its
+// network and a shortened address, e.g. "Ethereum 0xfc48...1ee3". Callers
+// such as chat agents often omit the name; refusing would fail the whole add
+// over a label the user can rename later.
+func defaultOrgWalletName(input orgWalletInput) string {
+	network := organizationWalletNetworks[input.NetworkID]
+	if network == "" {
+		network = strings.ToUpper(input.NetworkID)
+	}
+	if input.Type == orgWalletTypeDefi {
+		network += " DeFi"
+	}
+	address := input.Address
+	if len(address) > 12 {
+		address = address[:6] + "..." + address[len(address)-4:]
+	}
+	return network + " " + address
 }
 
 func buildOrgWalletPayload(input orgWalletInput) map[string]any {
@@ -457,18 +497,25 @@ func buildOrgWalletPayload(input orgWalletInput) map[string]any {
 	return wallet
 }
 
-func validateWalletSubsidiaries(cmd *op.Call, client *orgreports.Client, orgID string, inputs []orgWalletInput) error {
+// resolveWalletSubsidiaries checks every requested subsidiary exists and gives
+// wallets without one the organization's only subsidiary. An organization that
+// uses subsidiaries refuses a wallet without one (unless wallet rules assign
+// it), and with a single subsidiary there is no choice to make. With several,
+// the caller must pick; the platform stays the authority on whether one is
+// required.
+func resolveWalletSubsidiaries(cmd *op.Call, client *orgreports.Client, orgID string, inputs []orgWalletInput) error {
 	wanted := map[string]bool{}
 	for _, input := range inputs {
 		if input.SubsidiaryID != "" {
 			wanted[input.SubsidiaryID] = true
 		}
 	}
-	if len(wanted) == 0 {
-		return nil
-	}
 	subsidiaries, err := client.Subsidiaries(cmd.Context(), orgID)
 	if err != nil {
+		if len(wanted) == 0 {
+			// Nothing to validate, and no default is better than a failed add.
+			return nil
+		}
 		return fmt.Errorf("validate subsidiaries: %w", err)
 	}
 	for _, subsidiary := range subsidiaries {
@@ -480,7 +527,14 @@ func validateWalletSubsidiaries(cmd *op.Call, client *orgreports.Client, orgID s
 			missing = append(missing, id)
 		}
 		sort.Strings(missing)
-		return fmt.Errorf("unknown subsidiary ID(s): %s", strings.Join(missing, ", "))
+		return fmt.Errorf("unknown subsidiary ID(s) %s: %w", strings.Join(missing, ", "), op.NewValidationError("subsidiary is not one of this organization's subsidiaries"))
+	}
+	if len(subsidiaries) == 1 {
+		for i := range inputs {
+			if inputs[i].SubsidiaryID == "" {
+				inputs[i].SubsidiaryID = subsidiaries[0].ID
+			}
+		}
 	}
 	return nil
 }

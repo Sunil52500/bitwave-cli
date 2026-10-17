@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/bitwave-io/bitwave-cli/internal/apierr"
 )
 
 const ruleFields = `
@@ -338,5 +340,5 @@ func graphqlErrors(items []graphQLError) error {
 	for _, item := range items {
 		messages = append(messages, item.Message)
 	}
-	return fmt.Errorf("GraphQL: %s", strings.Join(messages, "; "))
+	return &apierr.GraphQLError{Messages: messages}
 }
