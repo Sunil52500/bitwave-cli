@@ -16,7 +16,9 @@ import (
 	"github.com/bitwave-io/bitwave-cli/internal/bitwave/store"
 )
 
-func TestJournalShare_LocalMode_UploadsToShareEndpoint(t *testing.T) {
+// A local workspace has no org and cannot be shared: the command refuses
+// before touching the network.
+func TestJournalShare_LocalMode_Refused(t *testing.T) {
 	dir := setupWorkspace(t)
 	if _, err := store.OpenLocal(dir); err != nil {
 		t.Fatal(err)
@@ -24,16 +26,9 @@ func TestJournalShare_LocalMode_UploadsToShareEndpoint(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "default.journal"), []byte("; my entries\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-
-	var gotPath, gotTo string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		_ = r.ParseMultipartForm(32 << 20)
-		gotTo = r.FormValue("to")
-		_, _ = w.Write([]byte(`{"workspaceId":"ws-x","workflowId":"workspace-share-ws-x","workflowRunId":"run-1"}`))
-	}))
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
 	defer srv.Close()
-
 	t.Setenv("BITWAVE_BASE_URL_GL", srv.URL)
 
 	cmd := testDefinition(newShareCmd())
@@ -41,14 +36,12 @@ func TestJournalShare_LocalMode_UploadsToShareEndpoint(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	if err := cmd.ExecuteContext(context.Background()); err != nil {
-		t.Fatalf("share failed: %v\n%s", err, out.String())
+	err := cmd.ExecuteContext(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "cloud workspace") {
+		t.Fatalf("local share must be refused, got err=%v out=%s", err, out.String())
 	}
-	if gotPath != "/v1/workspaces:share" {
-		t.Errorf("expected POST to /v1/workspaces:share, got %s", gotPath)
-	}
-	if gotTo != "a@b.co" {
-		t.Errorf("expected to=a@b.co, got %q", gotTo)
+	if called {
+		t.Fatal("local share must not contact the server")
 	}
 }
 

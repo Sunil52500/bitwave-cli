@@ -24,22 +24,15 @@ func newShareCmd() *operation.Definition {
 read-only, and email the link to --to.
 
 Auth:
-  Local mode share is ANONYMOUS — no ` + "`bitwave auth login`" + ` required. the cloud ledger
-  accepts the zipped workspace upload from an unauthenticated client and
-  delivers a magic-link invite. The recipient is the one who needs to be
-  authenticated (they sign in via the magic link to adopt the workspace
-  into their org).
-
-  Cloud mode share DOES require auth: the server tokenizes the live journal
-  on behalf of your org, so ` + "`bitwave auth login`" + ` + ` + "`bitwave org use`" + ` must already
-  be set up.
+  Sharing requires a CLOUD workspace: the server tokenizes the live journal
+  on behalf of your org, so ` + "`bitwave auth login`" + ` + ` + "`bitwave org use`" + ` must
+  already be set up and the workspace must have been created with
+  ` + "`bitwave init --cloud`" + `. A local workspace cannot be shared — every shared
+  workspace belongs to an org, which is what bounds who may read it.
 
 What gets sent:
-  Local mode  → zips the WHOLE workspace dir (all journals + accounts +
-                prices) and uploads it. The recipient adopts it as a new
-                workspace under their org.
-  Cloud mode  → no payload; the server reads from the existing cloud
-                workspace and emits a tokenized read-only link.
+  No payload; the server reads from the existing cloud workspace and emits
+  a tokenized read-only link.
 
 Examples:
   bitwave share --to teammate@example.com
@@ -50,7 +43,7 @@ Examples:
 			if to == "" {
 				return fmt.Errorf("--to is required")
 			}
-			cfg, dir, err := loadCwdConfig(cmd.Context())
+			cfg, _, err := loadCwdConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -70,27 +63,9 @@ Examples:
 			}
 
 			if cfg.Mode == config.ModeLocal {
-				// Local-mode share = upload the entire workspace (zip) so the
-				// recipient can adopt it into their org. The whole workspace
-				// goes — the cloud ledger has no way to know which journal entries the
-				// shared journal references across the other ledger files,
-				// and shipping the whole thing keeps balance/price/account
-				// validation intact server-side. The recipient picks the
-				// adopted workspace name; we do not pass --journal through.
-				_ = jId
-				wc := newWorkspaceShareClient(cmd.Context(), "")
-				resp, err := wc.UploadAndShare(cmd.Context(), dir, to, message)
-				if err != nil {
-					return fmt.Errorf("upload workspace share: %w", err)
-				}
-				if resp.EmailDelivered {
-					fmt.Fprintf(cmd.OutOrStdout(), "Invite emailed to %s\n", to)
-				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "Share recorded for %s (email delivery not confirmed)\n", to)
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "  Workspace: %s\n", resp.WorkspaceId)
-				fmt.Fprintf(cmd.OutOrStdout(), "  Recipient: %s\n", resp.RecipientId)
-				return nil
+				// There is no anonymous share any more: a local workspace has
+				// no org, and only an org-owned cloud workspace can be shared.
+				return fmt.Errorf("sharing requires a cloud workspace: run `bitwave init --cloud` (after `bitwave auth login` + `bitwave org use`) and share from there")
 			}
 			if cfg.OrgId == "" {
 				return fmt.Errorf(".bitwave.toml is missing org_id for cloud share")

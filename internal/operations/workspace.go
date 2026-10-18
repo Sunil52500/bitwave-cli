@@ -26,7 +26,6 @@ later commands (bitwave je, bitwave bal, ...) target the right workspace.`,
 	cmd.AddCommand(newWorkspaceUseCmd())
 	cmd.AddCommand(newWorkspaceCurrentCmd())
 	cmd.AddCommand(newWorkspaceCreateCmd())
-	cmd.AddCommand(newWorkspaceAdoptCmd())
 	cmd.AddCommand(newWorkspaceURLCmd())
 	return cmd
 }
@@ -67,44 +66,6 @@ workspaces have no online URL.`,
 			return nil
 		},
 	}
-}
-
-// newWorkspaceAdoptCmd accepts a pending shared workspace from the cloud ledger. The
-// recipient must be logged in (PKCE or BITWAVE_TOKEN); auth is forwarded as
-// the bearer token. The cloud ledger starts an async server-side workflow
-// that drains the stashed zip into real ledger rows under the recipient's
-// default org.
-//
-// The command returns as soon as the workflow is scheduled — it doesn't wait
-// for hydration to finish. Hydration is idempotent and the row's Status
-// flips back to active when it completes; `bitwave workspace list` will then
-// show the newly-adopted workspace.
-func newWorkspaceAdoptCmd() *operation.Definition {
-	var name string
-	cmd := &operation.Definition{
-		Use:   "adopt <workspaceId>",
-		Short: "Accept a shared workspace into the active org",
-		Args:  operation.ExactArgs(1),
-		RunE: func(cmd *operation.Call, args []string) error {
-			workspaceId := args[0]
-			active, err := requireActiveOrg(cmd.Context())
-			if err != nil {
-				return err
-			}
-			c := newWorkspaceShareClient(cmd.Context(), active.OrgID)
-			resp, err := c.Adopt(cmd.Context(), workspaceId, name)
-			if err != nil {
-				return fmt.Errorf("adopt workspace: %w", err)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Adopted workspace %s\n", resp.WorkspaceId)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Workflow:    %s\n", resp.WorkflowId)
-			fmt.Fprintf(cmd.OutOrStdout(), "  WorkflowRun: %s\n", resp.WorkflowRunId)
-			fmt.Fprintf(cmd.OutOrStdout(), "Hydration runs asynchronously; use `bitwave workspace list` to see when it appears.\n")
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&name, "name", "", "Rename the adopted workspace (defaults to the shared name)")
-	return cmd
 }
 
 func newWorkspaceListCmd() *operation.Definition {

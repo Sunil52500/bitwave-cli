@@ -146,7 +146,7 @@ func TestTerminalWorkspaceSelectionDoesNotOverridePlatformOrCreationOrg(t *testi
 	if err := config.Save(dir, &config.Config{Mode: config.ModeCloud, OrgId: "workspace-org", WorkspaceId: "ws-bound"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range [][]string{{"org", "wallets", "list"}, {"report", "balance"}, {"workspace", "create"}, {"workspace", "list"}, {"workspace", "use"}, {"workspace", "adopt"}, {"init"}, {"migrate"}} {
+	for _, path := range [][]string{{"org", "wallets", "list"}, {"report", "balance"}, {"workspace", "create"}, {"workspace", "list"}, {"workspace", "use"}, {"init"}, {"migrate"}} {
 		d := sdkDefinition(path...)
 		opts, err := terminalSDKOptionsForOperation(sdkCommand(d), d)
 		if err != nil || opts.OrganizationID != "active-org" {
