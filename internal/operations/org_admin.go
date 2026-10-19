@@ -159,6 +159,9 @@ func runAdminOperation(cmd *op.Call, operation adminOperation, args []string, f 
 	if operation.InputRequired && operation.Payload == nil && len(input) == 0 {
 		return errors.New("this operation requires a JSON object via --input or --data")
 	}
+	if err := rejectJobOverride(operation, input); err != nil {
+		return payloadError(cmd, operation.Name, orgID, err)
+	}
 	if payload, candidate := adminPayloadFor(operation, input); payload != nil {
 		if err := payload.Validate(candidate); err != nil {
 			return payloadError(cmd, operation.Name, orgID, err)

@@ -50,20 +50,52 @@ func repricePayload() *op.Payload {
 	}
 }
 
-// adminPayloadFor returns the contract that applies to a request, including the
-// generic `run` operation when it is pointed at a job that has a contract.
+// systemJobContract returns the payload contract for a system job, or nil when the job has none yet.
+func systemJobContract(systemJobID string) *op.Payload {
+	switch systemJobID {
+	case rollupSystemJobID:
+		return rollupReprocessPayload()
+	case "reprice-failed-to-price-transactions", "reprice-priced-and-ready-to-price-transactions":
+		return repricePayload()
+	}
+	return nil
+}
+
+// adminPayloadFor returns the contract that applies to a request. For system-job operations it is chosen by the
+// job that will actually run (the operation's fixed job, or the systemJobId sent to the generic `run`), never by
+// the operation's name, so no operation can be used to start a contracted job without its contract.
 func adminPayloadFor(operation adminOperation, input map[string]any) (*op.Payload, map[string]any) {
-	if operation.Payload != nil {
+	if operation.Document != gqlSystemJobRun {
 		return operation.Payload, input
 	}
-	if operation.Name == "system-job-run" && input["systemJobId"] == rollupSystemJobID {
-		stripped := make(map[string]any, len(input))
-		for key, value := range input {
-			if key != "systemJobId" && key != "action" {
-				stripped[key] = value
-			}
-		}
-		return rollupReprocessPayload(), stripped
+	jobID, _ := operation.Defaults["systemJobId"].(string)
+	if jobID == "" {
+		jobID, _ = input["systemJobId"].(string)
 	}
-	return nil, input
+	payload := systemJobContract(jobID)
+	if payload == nil {
+		return nil, input
+	}
+	stripped := make(map[string]any, len(input))
+	for key, value := range input {
+		if key != "systemJobId" && key != "action" {
+			stripped[key] = value
+		}
+	}
+	return payload, stripped
+}
+
+// rejectJobOverride stops --data from changing which job a fixed-job operation runs. `run` is the only
+// operation that chooses its job.
+func rejectJobOverride(operation adminOperation, input map[string]any) error {
+	if operation.Document != gqlSystemJobRun || operation.Defaults["systemJobId"] == nil {
+		return nil
+	}
+	if value, sent := input["systemJobId"]; sent && value != operation.Defaults["systemJobId"] {
+		return op.NewValidationError("systemJobId is fixed for this operation and cannot be changed in the payload; use the system-jobs run operation to choose a job. Nothing was submitted.")
+	}
+	if value, sent := input["action"]; sent && value != operation.Defaults["action"] {
+		return op.NewValidationError("action is fixed for this operation and cannot be changed in the payload; use the system-jobs run operation to choose a job. Nothing was submitted.")
+	}
+	return nil
 }

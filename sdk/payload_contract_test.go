@@ -170,3 +170,49 @@ func TestDescriptorsPublishThePayloadContractHostedToolsUse(t *testing.T) {
 		t.Fatal("operations without a contract must not advertise one")
 	}
 }
+
+func TestAnotherSystemJobToolCannotBeUsedToStartARollupWithoutItsContract(t *testing.T) {
+	for _, tool := range []string{
+		"bitwave_org_admin_system_jobs_ignore",
+		"bitwave_org_admin_system_jobs_reconcile",
+		"bitwave_org_admin_system_jobs_delete_transactions",
+	} {
+		h := &payloadHarness{t: t}
+		_, err := h.invoke(tool, `{"systemJobId":"reprocess-rollup-parent-txns","startSEC":"2026-01-01","endSEC":"2026-10-15"}`, `,"yes":true`)
+		var validation *ValidationError
+		if !errors.As(err, &validation) {
+			t.Fatalf("%s: err = %v, want a ValidationError", tool, err)
+		}
+		if h.calls != 0 {
+			t.Fatalf("%s: the request reached the network (%d calls)", tool, h.calls)
+		}
+	}
+}
+
+func TestGenericRunEnforcesTheContractOfTheJobItIsPointedAt(t *testing.T) {
+	h := &payloadHarness{t: t}
+	_, err := h.invoke(runTool, `{"systemJobId":"reprice-failed-to-price-transactions","walletIds":["w1"],"startSEC":"2026-10-15","endSEC":"2026-01-01"}`, `,"yes":true`)
+	var validation *ValidationError
+	if !errors.As(err, &validation) || h.calls != 0 {
+		t.Fatalf("err = %v calls = %d, want a ValidationError and no request", err, h.calls)
+	}
+}
+
+func TestBackendRefusalOverHTTP200IsATypedGraphQLErrorNotAnUntypedFailure(t *testing.T) {
+	h := &payloadHarness{t: t, body: `{"data":null,"errors":[{"message":"A start date and an end date are both required for reprocess rollup parent transactions"}]}`}
+	_, err := h.invoke(rollupTool, goodRollup, `,"yes":true`)
+	var refusal *GraphQLError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("err = %v, want a GraphQLError so hosted callers can tell a refusal from a transport failure", err)
+	}
+	if len(refusal.Messages) != 1 || !strings.Contains(refusal.Messages[0], "start date and an end date") {
+		t.Fatalf("messages = %v", refusal.Messages)
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		t.Fatal("an HTTP 200 GraphQL refusal must not look like an HTTP API error")
+	}
+	if h.calls != 1 {
+		t.Fatalf("calls = %d", h.calls)
+	}
+}
