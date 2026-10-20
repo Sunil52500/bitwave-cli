@@ -30,15 +30,10 @@ func newCombineTransactionsCmd() *op.Definition {
 	cmd := &op.Definition{
 		Use:   "combine TRANSACTION_ID TRANSACTION_ID [TRANSACTION_ID...]",
 		Short: "Combine several recordings of one on-chain transaction into one parent",
-		Long: `Combine two or more transactions into a single combined parent, the same
-action as the transaction UI's Combine button.
-
-The parent starts uncategorized and unreconciled, so combine before
-categorizing. The server refuses reconciled transactions, transactions that are
-already combined, and transactions in a closed period. Run
-"bitwave transaction duplicates" first: it finds the candidate groups and says
-which ones must not be combined (for example the same transfer recorded twice
-because two wallets share an address).`,
+		Long: `Combine two or more transactions into one parent (PUT
+/v3/orgs/{orgId}/transactions/combine). The parent starts uncategorized and
+unreconciled. The server refuses reconciled, already-combined and closed-period
+transactions. Requires --yes; --dry-run prints the request.`,
 		Example: `  bitwave transaction duplicates --stage needs-categorization --json
   bitwave transaction combine TXN_ID_1 TXN_ID_2 --dry-run --json
   bitwave transaction combine TXN_ID_1 TXN_ID_2 --yes --json`,
@@ -56,9 +51,8 @@ func newUncombineTransactionsCmd() *op.Definition {
 	cmd := &op.Definition{
 		Use:   "uncombine TRANSACTION_ID [TRANSACTION_ID...]",
 		Short: "Restore the children of combined parent transactions",
-		Long: `Undo a combine: each TRANSACTION_ID is a combined parent, and its children
-come back as separate transactions. This is the transaction UI's Un-combine
-action and the way to reverse a combine that turned out to be wrong.`,
+		Long: `Restore the children of each combined parent (PUT
+/v3/orgs/{orgId}/transactions/uncombine). Requires --yes; --dry-run prints the request.`,
 		Example: `  bitwave transaction uncombine PARENT_TXN_ID --dry-run --json
   bitwave transaction uncombine PARENT_TXN_ID --yes --json`,
 		Args: op.MinimumNArgs(1),

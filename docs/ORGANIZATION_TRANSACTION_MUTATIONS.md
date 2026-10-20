@@ -149,36 +149,20 @@ the CLI polls:
 GET /v3/orgs/{orgId}/transactions/bulk-state/{workflowId}
 ```
 
-## Duplicate recordings of one on-chain transaction
-
-One on-chain transaction can be recorded more than once under slightly
-different ids: a network prefix (`BASE.0x…`), a custody suffix
-(`0x…?id=<uuid>`) or an import suffix (`0x…_import1`). An exact id search never
-finds them. `transaction duplicates` groups a filtered population by its hash
-and classifies every group, returning the groups only, never the rows it
-scanned:
+## Duplicates
 
 ```bash
-bitwave --quiet transaction duplicates --org ORG_ID \
-  --stage needs-categorization --json
+bitwave --quiet transaction duplicates --org ORG_ID --stage needs-categorization --json
 ```
 
-`--stage` selects the transaction UI's tab (`needs-categorization`,
-`to-be-synced`, `complete`, `ignored`, `deleted`); `transaction search` accepts
-the same flag. Each group carries a `recommendation`:
-
-| Recommendation | Meaning |
-|---|---|
-| `combine` | The send leg in one wallet and the receive leg in another: one transfer. `nextCommand` holds the dry-run combine. |
-| `combine-after-review` | A transfer leg and its fee recorded in different wallets. |
-| `review` | Mixed assets, an amount mismatch, three or more recordings, or a combine candidate that is reconciled, ignored or categorized (`blockers`). |
-| `do-not-combine` | The same send or receive recorded in two wallets that share an address. Combining would double the amount; fix the wallet overlap instead. |
-| `not-duplicates` | Same hash, different recipients or senders: separate transfers inside one transaction. |
-
-The scan stops at `--max-rows` (default 2000) and reports `truncated: true`
-with a `nextToken`, so a partial scan is never mistaken for a complete one.
-Most same-hash groups in a real organization are not duplicates to combine;
-show the user each group's reason before acting on it.
+Read-only. Pages `POST /v3/orgs/{orgId}/transactions/search` with the same
+filters as `search` (`--stage` is the UI tab: `needs-categorization`,
+`to-be-synced`, `complete`, `ignored`, `deleted`) and returns groups of ids
+sharing one on-chain hash. Output: `scanned`, `truncated` (+ `nextToken`),
+`skipped`, `summary`, and `groups[]` with `hash`, `kind`, `recommendation`
+(`combine` | `combine-after-review` | `review` | `do-not-combine` |
+`not-duplicates`), `reason`, `blockers`, `nextCommand`, `transactions`.
+`--max-rows` (default 2000) bounds the scan.
 
 ## Combine and uncombine
 
@@ -206,11 +190,10 @@ PUT /v3/orgs/{orgId}/transactions/combine     {"txnIds": [...]}
 PUT /v3/orgs/{orgId}/transactions/uncombine   {"txnIds": [...]}
 ```
 
-Combine answers with the new parent's id. The parent starts uncategorized and
-unreconciled, so combine before categorizing. The server refuses reconciled
-transactions, transactions that are already combined, and transactions in a
-closed period. Uncombine answers per parent; one rejected parent makes the
-command exit non-zero with `partial_failure` and every result retained.
+Combine returns `combinedTransactionId`; the parent starts uncategorized and
+unreconciled. The server refuses reconciled, already-combined and closed-period
+transactions. Uncombine answers per parent; a rejected parent exits non-zero
+with `partial_failure`.
 
 ## Categorization discovery
 

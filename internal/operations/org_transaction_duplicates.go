@@ -57,23 +57,11 @@ func newDuplicateTransactionsCmd() *op.Definition {
 	cmd := &op.Definition{
 		Use:   "duplicates",
 		Short: "Find transactions that record one on-chain transaction more than once",
-		Long: `Find groups of transactions that share an on-chain transaction hash but have
-different ids (a network prefix, a custody "?id=" suffix, an import suffix), and
-classify each group:
-
-  combine               send leg in one wallet, receive leg in another: one transfer
-  combine-after-review  a transfer leg and its fee recorded in different wallets
-  review                mixed assets, amount mismatch, three or more recordings, or
-                        a combine candidate that is reconciled, ignored or categorized
-  do-not-combine        the same send or receive recorded in two wallets that share
-                        an address; combining would double the amount
-  not-duplicates        same hash, different recipients or senders: separate transfers
-
-The filters match the transaction UI; --stage selects the UI's tab. The command
-pages the search API itself and returns only the groups. It stops at --max-rows
-and reports "truncated" with the next page token, so a result from a partial
-scan is never mistaken for a complete one. Nothing is changed; pass a group's
-ids to "bitwave transaction combine" after reviewing it.`,
+		Long: `Group transactions that share an on-chain hash under different ids (network
+prefix, "?id=" suffix, "_importN" suffix). Read-only: pages the search API and
+returns the groups only, each with kind, recommendation (combine,
+combine-after-review, review, do-not-combine, not-duplicates), reason, blockers
+and nextCommand. Stops at --max-rows and reports truncated with nextToken.`,
 		Example: `  bitwave transaction duplicates --stage needs-categorization --json
   bitwave transaction duplicates --from 2026-01-01 --to 2026-03-31 --wallet Treasury --json`,
 		Args: op.NoArgs,
