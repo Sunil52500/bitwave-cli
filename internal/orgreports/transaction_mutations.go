@@ -205,6 +205,44 @@ func (c *Client) SearchTransactions(ctx context.Context, orgID string, input Tra
 	return &response, nil
 }
 
+// TransactionIDsBody is the body the product UI sends to combine or uncombine.
+type TransactionIDsBody struct {
+	TxnIDs []string `json:"txnIds"`
+}
+
+// CombineTransactionsResponse carries the id of the combined parent.
+type CombineTransactionsResponse struct {
+	ID string `json:"id"`
+}
+
+// UncombineTransactionResult is one per-parent outcome of an uncombine.
+type UncombineTransactionResult struct {
+	TxID   string `json:"txId"`
+	Status string `json:"status"`
+}
+
+// CombineTransactions merges the given transactions into one new parent and
+// returns the parent's id. The server refuses reconciled, already-combined and
+// closed-period transactions; the parent starts uncategorized.
+func (c *Client) CombineTransactions(ctx context.Context, orgID string, ids []string) (*CombineTransactionsResponse, error) {
+	var response CombineTransactionsResponse
+	path := "/v3/orgs/" + url.PathEscape(orgID) + "/transactions/combine"
+	if err := c.doJSON(ctx, http.MethodPut, path, TransactionIDsBody{TxnIDs: ids}, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// UncombineTransactions restores the children of each combined parent.
+func (c *Client) UncombineTransactions(ctx context.Context, orgID string, ids []string) ([]UncombineTransactionResult, error) {
+	var response []UncombineTransactionResult
+	path := "/v3/orgs/" + url.PathEscape(orgID) + "/transactions/uncombine"
+	if err := c.doJSON(ctx, http.MethodPut, path, TransactionIDsBody{TxnIDs: ids}, &response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
 func (c *Client) TransactionCount(ctx context.Context, orgID string, input TransactionOverviewRequest) (int, error) {
 	var response struct {
 		Count int `json:"count"`

@@ -15,6 +15,7 @@ import (
 
 type transactionSearchFlags struct {
 	orgID, from, to, nextToken, sortBy, sortDirection string
+	stage                                             string
 	wallets, assets, types, states                    []string
 	categorization, reconciliation, ignored           []string
 	search, transactionIDs, fromAddresses             []string
@@ -44,6 +45,7 @@ an LLM does not need to load the organization's entire transaction history.`,
 	cmd.Flags().StringSliceVar(&f.types, "type", nil, "Transaction type, such as send, receive, trade, or transfer")
 	cmd.Flags().StringSliceVar(&f.operations, "operation", nil, "Transaction operation, such as Send or Receive")
 	cmd.Flags().StringSliceVar(&f.states, "state", nil, "Transaction workflow state")
+	cmd.Flags().StringVar(&f.stage, "stage", "", "Workflow stage, as the transaction UI's tabs use it: needs-categorization, to-be-synced, complete, ignored, or deleted")
 	cmd.Flags().StringSliceVar(&f.categorization, "categorization", nil, "Categorization status")
 	cmd.Flags().StringSliceVar(&f.reconciliation, "reconciliation", nil, "Reconciliation status")
 	cmd.Flags().StringSliceVar(&f.ignored, "ignored", nil, "Ignored status")
@@ -102,7 +104,7 @@ func runSearchOrgTransactions(cmd *op.Call, f transactionSearchFlags) error {
 		Filters: orgreports.TransactionExportFilters{
 			DateRange: optionalDateRange(f.from, f.to), WalletIDs: walletIDs,
 			AssetIDs: uniqueNonEmpty(f.assets), TransactionTypes: uniqueNonEmpty(f.types), Operations: uniqueNonEmpty(f.operations),
-			States: uniqueNonEmpty(f.states), CategorizationStatuses: uniqueNonEmpty(f.categorization),
+			Stage: strings.TrimSpace(f.stage), States: uniqueNonEmpty(f.states), CategorizationStatuses: uniqueNonEmpty(f.categorization),
 			ReconciliationStatuses: uniqueNonEmpty(f.reconciliation), IgnoredStatuses: uniqueNonEmpty(f.ignored),
 			SearchTokens: uniqueNonEmpty(f.search), TransactionIDs: uniqueNonEmpty(f.transactionIDs),
 			FromAddresses: uniqueNonEmpty(f.fromAddresses), ToAddresses: uniqueNonEmpty(f.toAddresses), Addresses: uniqueNonEmpty(f.addresses),
