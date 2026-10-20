@@ -97,7 +97,7 @@ func TestPricingTransactionLookupUsesTransactionServiceAndDefaults(t *testing.T)
 		t.Fatal(err)
 	}
 	output := out.String()
-	if !strings.Contains(output, "https://transactions.bitwave.io/orgs/org-1/lookups?") ||
+	if !strings.Contains(output, "https://api.bitwave.io/orgs/org-1/lookups?") ||
 		!strings.Contains(output, "fieldName=amountCurrencyName") || !strings.Contains(output, "startsWith=ETH") {
 		t.Fatalf("output = %s", output)
 	}

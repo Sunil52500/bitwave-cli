@@ -92,10 +92,12 @@ func New(baseURL string, tokenResolver func() (string, error)) *Client {
 	rulesQueryURL := baseURL + "/graphql-reports"
 	rulesMutationURL := baseURL + "/graphql"
 	api2URL := baseURL
+	// The transactions service (transactions.bitwave.io) was retired on
+	// 2026-10-19; the API gateway at the core base URL routes every path it
+	// served (/orgs/{orgId}/lookups, /transactions/summary_v2, ...) to api-svc.
 	transactionsURL := baseURL
 	if parsed, err := url.Parse(baseURL); err == nil && parsed.Hostname() == "api.bitwave.io" {
 		api2URL = "https://api2.bitwave.io"
-		transactionsURL = "https://transactions.bitwave.io"
 		rulesQueryURL = "https://api4.bitwave.io/graphql-reports"
 		rulesMutationURL = "https://api-app.bitwave.io/graphql"
 	}
