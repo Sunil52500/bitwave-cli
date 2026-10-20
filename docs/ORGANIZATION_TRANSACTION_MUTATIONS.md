@@ -183,6 +183,14 @@ bitwave --quiet transaction uncombine PARENT_TXN_ID \
   --org ORG_ID --yes --json
 ```
 
+Several groups in one call (one request and one result per group; a refused
+group is reported and the rest still run):
+
+```bash
+bitwave --quiet transaction combine --group A1,A2 --group B1,B2 \
+  --org ORG_ID --yes --json
+```
+
 Endpoints:
 
 ```text

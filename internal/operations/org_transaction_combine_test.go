@@ -184,3 +184,113 @@ func TestUncombineDryRunNeedsNoConfirmation(t *testing.T) {
 		t.Fatalf("envelope = %#v", envelope)
 	}
 }
+
+// batchCombineServer answers each combine with a parent named after the
+// group's first id, or a 409 for groups whose first id is in refuse.
+func batchCombineServer(t *testing.T, refuse map[string]bool) *[][]string {
+	t.Helper()
+	var sent [][]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/v3/orgs/org-1/transactions/combine" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			TxnIDs []string `json:"txnIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		sent = append(sent, body.TxnIDs)
+		if refuse[body.TxnIDs[0]] {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"message":"already combined"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"parent-` + body.TxnIDs[0] + `"}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("BITWAVE_BASE_URL_CORE", server.URL)
+	t.Setenv("BITWAVE_TOKEN", "token")
+	return &sent
+}
+
+func TestCombineGroupsRunOneRequestPerGroupInOneConfirmedCall(t *testing.T) {
+	sent := batchCombineServer(t, nil)
+	envelope, out, err := runMutationCommand(t, "combine", "--group", "a1,a2", "--group", " b1 , b2 ,b3", "--org", "org-1", "--yes", "--json")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if len(*sent) != 2 || strings.Join((*sent)[1], ",") != "b1,b2,b3" {
+		t.Fatalf("requests = %v", *sent)
+	}
+	result := envelope.Result.(map[string]any)
+	if envelope.Status != "success" || result["succeeded"].(float64) != 2 || result["failed"].(float64) != 0 {
+		t.Fatalf("envelope = %#v", envelope)
+	}
+	first := result["results"].([]any)[0].(map[string]any)
+	if first["combinedTransactionId"] != "parent-a1" || first["status"] != "success" {
+		t.Fatalf("first result = %#v", first)
+	}
+}
+
+func TestCombineGroupsReportARefusedGroupAndStillRunTheRest(t *testing.T) {
+	sent := batchCombineServer(t, map[string]bool{"b1": true})
+	envelope, _, err := runMutationCommand(t, "combine", "--group", "a1,a2", "--group", "b1,b2", "--group", "c1,c2", "--org", "org-1", "--yes", "--json")
+	if err == nil || !strings.Contains(err.Error(), "2 succeeded, 1 failed") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*sent) != 3 {
+		t.Fatalf("every group must be attempted: %v", *sent)
+	}
+	if envelope.Status != "partial_failure" {
+		t.Fatalf("envelope = %#v", envelope)
+	}
+	refused := envelope.Result.(map[string]any)["results"].([]any)[1].(map[string]any)
+	if refused["status"] != "failed" || refused["error"] == "" || refused["combinedTransactionId"] != nil {
+		t.Fatalf("refused group = %#v", refused)
+	}
+}
+
+func TestCombineGroupsDryRunListsEveryRequest(t *testing.T) {
+	envelope, out, err := runMutationCommand(t, "combine", "--group", "a1,a2", "--group", "b1,b2", "--org", "org-1", "--dry-run", "--json")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	requests := envelope.Request.([]any)
+	if envelope.Status != "preview" || len(requests) != 2 {
+		t.Fatalf("envelope = %#v", envelope)
+	}
+	if requests[1].(map[string]any)["path"] != "/v3/orgs/org-1/transactions/combine" {
+		t.Fatalf("request = %#v", requests[1])
+	}
+}
+
+func TestCombineGroupsValidateBeforeAnyRequest(t *testing.T) {
+	sent := batchCombineServer(t, nil)
+	for _, test := range []struct {
+		args    []string
+		message string
+	}{
+		{[]string{"--group", "a1"}, "needs at least two distinct"},
+		{[]string{"--group", "a1,a1"}, "needs at least two distinct"},
+		{[]string{"--group", "a1,a2", "--group", "a2,b2"}, "transaction a2 is in --group 1 and --group 2"},
+		{[]string{"x1", "--group", "a1,a2"}, "either as arguments or with --group"},
+	} {
+		_, _, err := runMutationCommand(t, append([]string{"combine", "--org", "org-1", "--yes", "--json"}, test.args...)...)
+		if err == nil || !strings.Contains(err.Error(), test.message) {
+			t.Errorf("%v: err = %v, want %q", test.args, err, test.message)
+		}
+	}
+	if len(*sent) != 0 {
+		t.Fatalf("invalid groups must not reach the server: %v", *sent)
+	}
+	groups := make([]string, maxCombineGroups+1)
+	for i := range groups {
+		groups[i] = "--group=x" + strings.Repeat("y", i+1) + ",z" + strings.Repeat("y", i+1)
+	}
+	if _, _, err := runMutationCommand(t, append([]string{"combine", "--org", "org-1", "--yes", "--json"}, groups...)...); err == nil || !strings.Contains(err.Error(), "at most 100 groups") {
+		t.Fatalf("over the cap: err = %v", err)
+	}
+}

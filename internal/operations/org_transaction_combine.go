@@ -27,22 +27,32 @@ const (
 
 func newCombineTransactionsCmd() *op.Definition {
 	var f transactionMutationFlags
+	var groups []string
 	cmd := &op.Definition{
-		Use:   "combine TRANSACTION_ID TRANSACTION_ID [TRANSACTION_ID...]",
+		Use:   "combine [TRANSACTION_ID TRANSACTION_ID...]",
 		Short: "Combine several recordings of one on-chain transaction into one parent",
 		Long: `Combine two or more transactions into one parent (PUT
 /v3/orgs/{orgId}/transactions/combine). The parent starts uncategorized and
 unreconciled. The server refuses reconciled, already-combined and closed-period
-transactions. Requires --yes; --dry-run prints the request.`,
-		Example: `  bitwave transaction duplicates --stage needs-categorization --json
-  bitwave transaction combine TXN_ID_1 TXN_ID_2 --dry-run --json
-  bitwave transaction combine TXN_ID_1 TXN_ID_2 --yes --json`,
-		Args: op.MinimumNArgs(2),
+transactions. Requires --yes; --dry-run prints the request.
+
+Positional ids form one parent. Repeat --group ID,ID[,ID] to combine several
+groups in one confirmed call: one request and one result per group.`,
+		Example: `  bitwave transaction combine TXN_ID_1 TXN_ID_2 --dry-run --json
+  bitwave transaction combine --group A1,A2 --group B1,B2 --yes --json`,
+		Args: op.ArbitraryArgs,
 		RunE: func(cmd *op.Call, args []string) error {
+			if len(groups) > 0 {
+				if len(args) > 0 {
+					return mutationError(cmd, combineOperation, f.jsonOutput, errors.New("pass transaction IDs either as arguments or with --group, not both"))
+				}
+				return runCombineGroups(cmd, groups, f)
+			}
 			return runCombineTransactions(cmd, uniqueNonEmpty(args), f)
 		},
 	}
 	addMutationFlags(cmd, &f)
+	cmd.Flags().StringArrayVar(&groups, "group", nil, "Comma-separated transaction IDs forming one parent (repeatable)")
 	return cmd
 }
 
@@ -100,6 +110,104 @@ func runCombineTransactions(cmd *op.Call, ids []string, f transactionMutationFla
 		Note: "The combined transaction is uncategorized and unreconciled. Reverse with: bitwave transaction uncombine " + result.ID + " --yes",
 	}}
 	return outputMutation(cmd, f.jsonOutput, envelope, fmt.Sprintf("combine: %d transactions combined into %s\n", len(ids), result.ID))
+}
+
+// maxCombineGroups bounds one batch call; larger batches are split by the caller.
+const maxCombineGroups = 100
+
+type combineGroupResult struct {
+	SourceTransactionIDs  []string `json:"sourceTransactionIds"`
+	Status                string   `json:"status"`
+	CombinedTransactionID string   `json:"combinedTransactionId,omitempty"`
+	Error                 string   `json:"error,omitempty"`
+}
+
+type combineBatchResult struct {
+	Groups    int                  `json:"groups"`
+	Succeeded int                  `json:"succeeded"`
+	Failed    int                  `json:"failed"`
+	Results   []combineGroupResult `json:"results"`
+	Note      string               `json:"note"`
+}
+
+// parseCombineGroups turns repeated --group values into validated id lists.
+// Each group needs two distinct ids, and no id may appear in two groups.
+func parseCombineGroups(raw []string) ([][]string, error) {
+	if len(raw) > maxCombineGroups {
+		return nil, fmt.Errorf("at most %d groups per call", maxCombineGroups)
+	}
+	seen := map[string]int{}
+	var groups [][]string
+	for i, value := range raw {
+		ids := uniqueNonEmpty(strings.Split(value, ","))
+		for j := range ids {
+			ids[j] = strings.TrimSpace(ids[j])
+		}
+		ids = uniqueNonEmpty(ids)
+		if len(ids) < 2 {
+			return nil, fmt.Errorf("--group %d needs at least two distinct transaction IDs", i+1)
+		}
+		for _, id := range ids {
+			if other, dup := seen[id]; dup {
+				return nil, fmt.Errorf("transaction %s is in --group %d and --group %d", id, other, i+1)
+			}
+			seen[id] = i + 1
+		}
+		groups = append(groups, ids)
+	}
+	return groups, nil
+}
+
+func runCombineGroups(cmd *op.Call, raw []string, f transactionMutationFlags) error {
+	groups, err := parseCombineGroups(raw)
+	if err != nil {
+		return mutationError(cmd, combineOperation, f.jsonOutput, err)
+	}
+	orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
+	if err != nil {
+		return mutationError(cmd, combineOperation, f.jsonOutput, err)
+	}
+	path := fmt.Sprintf("/v3/orgs/%s/transactions/combine", orgID)
+	if f.dryRun {
+		requests := make([]map[string]any, 0, len(groups))
+		for _, ids := range groups {
+			requests = append(requests, map[string]any{"method": "PUT", "path": path, "body": orgreports.TransactionIDsBody{TxnIDs: ids}})
+		}
+		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: combineOperation, Organization: orgID, DryRun: true, Request: requests})
+	}
+	if !f.yes {
+		return mutationError(cmd, combineOperation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+	}
+	client := newReportsClient(cmd.Context(), orgID)
+	batch := combineBatchResult{Groups: len(groups), Results: make([]combineGroupResult, 0, len(groups)),
+		Note: "Combined parents are uncategorized and unreconciled. Reverse one with: bitwave transaction uncombine PARENT_ID --yes"}
+	// One request per group, in order: a refused group is reported and the
+	// rest still run, so the caller never has to guess which ones landed.
+	for _, ids := range groups {
+		result := combineGroupResult{SourceTransactionIDs: ids}
+		parent, err := client.CombineTransactions(cmd.Context(), orgID, ids)
+		switch {
+		case err != nil:
+			result.Status, result.Error = "failed", err.Error()
+		case strings.TrimSpace(parent.ID) == "":
+			result.Status, result.Error = "failed", "the server returned no combined transaction id; check these transactions before retrying"
+		default:
+			result.Status, result.CombinedTransactionID = "success", parent.ID
+		}
+		if result.Status == "success" {
+			batch.Succeeded++
+		} else {
+			batch.Failed++
+		}
+		batch.Results = append(batch.Results, result)
+	}
+	envelope := mutationEnvelope{SchemaVersion: "1", Status: "success", Operation: combineOperation, Organization: orgID, Result: batch}
+	if batch.Failed > 0 {
+		envelope.Status = "partial_failure"
+		_ = writeJSON(cmd.OutOrStdout(), envelope)
+		return fmt.Errorf("combine processed %d group(s): %d succeeded, %d failed", batch.Groups, batch.Succeeded, batch.Failed)
+	}
+	return outputMutation(cmd, f.jsonOutput, envelope, fmt.Sprintf("combine: %d group(s) combined\n", batch.Succeeded))
 }
 
 type uncombineResult struct {
