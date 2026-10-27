@@ -174,6 +174,22 @@ func TestWalletAddRejectsAnUnknownSubsidiaryAsValidation(t *testing.T) {
 	}
 }
 
+func TestWalletAddWithoutYesRequiresConfirmationAndSendsNothing(t *testing.T) {
+	api := newFakeOrgAPI()
+	_, err := runWalletsAdd(t, api, "--network", "eth", "--address", testWalletAddress)
+	var confirmation *op.ConfirmationRequiredError
+	if !errors.As(err, &confirmation) || confirmation.Error() != "refusing to change the organization without --yes (use --dry-run to preview)" {
+		t.Fatalf("err = %#v (%v), want a confirmation refusal", err, err)
+	}
+	var validation *op.ValidationError
+	if errors.As(err, &validation) {
+		t.Fatalf("a missing confirmation is not an invalid payload: %#v", err)
+	}
+	if len(api.created) != 0 {
+		t.Fatalf("created = %#v", api.created)
+	}
+}
+
 func TestWalletAddLocalRefusalsAreValidationErrors(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args []string
@@ -181,7 +197,6 @@ func TestWalletAddLocalRefusalsAreValidationErrors(t *testing.T) {
 	}{
 		"missing address": {[]string{"--network", "eth", "--yes"}, "address is required"},
 		"missing network": {[]string{"--address", testWalletAddress, "--yes"}, "networkId is required"},
-		"missing yes":     {[]string{"--network", "eth", "--address", testWalletAddress}, "refusing to change the organization without --yes (use --dry-run to preview)"},
 		"hd on eth":       {[]string{"--network", "eth", "--address", "xpub1", "--address-type", "hd", "--yes"}, "HD wallets are supported only for btc and dash"},
 		"bad type":        {[]string{"--type", "vault", "--network", "eth", "--address", testWalletAddress, "--yes"}, "type must be blockchain or defi"},
 		"bad concurrency": {[]string{"--network", "eth", "--address", testWalletAddress, "--concurrency", "0", "--yes"}, "--concurrency must be between 1 and 50"},

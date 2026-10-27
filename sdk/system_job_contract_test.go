@@ -254,3 +254,28 @@ func TestTransactionReadInputErrorsAreValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+// A valid job payload without the confirmation is refused locally with its own
+// error type: nothing was sent, and resending it with yes is the right next
+// step, so hosted callers must not treat it as an invalid payload (they block
+// identical retries of those) or as an unknown outcome (they hold job starts).
+// An invalid payload without yes still reports the payload problem first.
+func TestSystemJobWithoutYesIsAConfirmationRefusalNotAValidationError(t *testing.T) {
+	for _, tool := range []string{markReconciledTool, runTool} {
+		data := `{"endSEC":"2026-07-31"}`
+		if tool == runTool {
+			data = `{"systemJobId":"bulk-transaction","action":"markReconciled","endSEC":"2026-07-31"}`
+		}
+		_, err := invokeOffline(t, tool, `{"data":`+string(contractJSON(t, data))+`}`)
+		var confirmation *ConfirmationRequiredError
+		if !errors.As(err, &confirmation) || !strings.Contains(confirmation.Error(), "without --yes") {
+			t.Fatalf("%s: err = %v (%T), want a ConfirmationRequiredError", tool, err, err)
+		}
+		var validation *ValidationError
+		if errors.As(err, &validation) {
+			t.Fatalf("%s: a missing confirmation must not be a ValidationError", tool)
+		}
+	}
+	_, err := invokeOffline(t, markReconciledTool, `{"data":`+string(contractJSON(t, `{"endSEC":"1785542399"}`))+`}`)
+	requireValidation(t, err, "YYYY-MM-DD")
+}

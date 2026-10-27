@@ -20,6 +20,11 @@ type APIError = apierr.Error
 // contain user input. Other error types, including APIError, remain untrusted.
 type ValidationError = operation.ValidationError
 
+// ConfirmationRequiredError is a mutation refused locally for want of --yes
+// (yes: true). Nothing was sent; the same request with the confirmation is the
+// correct next step. Its message is static and safe to display.
+type ConfirmationRequiredError = operation.ConfirmationRequiredError
+
 // GraphQLError is a Bitwave platform GraphQL response that carried errors: the
 // server answered and refused the request. Messages remain untrusted.
 type GraphQLError = apierr.GraphQLError

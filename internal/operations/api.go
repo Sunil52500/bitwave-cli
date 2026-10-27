@@ -135,7 +135,7 @@ func runAPIRequest(cmd *op.Call, method, path string, f apiRequestFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: "api-request", Organization: orgID, DryRun: true, Request: preview})
 	}
 	if apiMethodMayWrite(method) && !f.readOnly && !f.yes {
-		return errors.New("refusing a request that may change the organization without --yes (or --read-only for a read-only POST)")
+		return op.NewConfirmationRequired("refusing a request that may change the organization without --yes (or --read-only for a read-only POST)")
 	}
 	data, err := client.RawRequestBytes(cmd.Context(), f.service, method, path, body, headers)
 	if err != nil {
@@ -219,7 +219,7 @@ func runAPIGraphQL(cmd *op.Call, f graphqlFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: "graphql", Organization: orgID, DryRun: true, Request: apiPreview(http.MethodPost, endpoint, f.service, body)})
 	}
 	if graphqlMayWrite(document) && !f.yes {
-		return errors.New("refusing a GraphQL mutation without --yes")
+		return op.NewConfirmationRequired("refusing a GraphQL mutation without --yes")
 	}
 	data, err := client.RawRequest(cmd.Context(), f.service, http.MethodPost, path, json.RawMessage(body))
 	if err != nil {

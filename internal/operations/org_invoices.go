@@ -218,7 +218,7 @@ func runInvoiceCategorize(cmd *op.Call, transactionID string, f invoiceCategoriz
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	if err := client.CategorizeTransaction(cmd.Context(), orgID, transactionID, body); err != nil {
 		return mutationError(cmd, operation, f.jsonOutput, fmt.Errorf("categorize transaction %s to invoice %s: %w", transactionID, invoice.Title, err))

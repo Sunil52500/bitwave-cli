@@ -64,7 +64,7 @@ func newRunRulesCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to trigger an organization-wide rules run without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to trigger an organization-wide rules run without --yes"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			if err := client.RunRules(cmd.Context(), orgID); err != nil {
@@ -117,7 +117,7 @@ func newBulkRunRulesCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to trigger Bulk Run without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to trigger Bulk Run without --yes"))
 			}
 			if err := client.ExecuteBulkRules(cmd.Context(), orgID, after, before); err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)
@@ -191,7 +191,7 @@ func newToggleRuleCmd(name string, disabled bool) *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: name + "-rule", Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, name+"-rule", f.jsonOutput, errors.New("refusing to change a rule without --yes (use --dry-run to preview)"))
+				return mutationError(cmd, name+"-rule", f.jsonOutput, op.NewConfirmationRequired("refusing to change a rule without --yes (use --dry-run to preview)"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			if err := client.ToggleRule(cmd.Context(), orgID, args[0], disabled); err != nil {
@@ -220,7 +220,7 @@ func newDeleteRuleCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: "delete-rule", Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, "delete-rule", f.jsonOutput, errors.New("refusing to permanently delete a rule without --yes (use --dry-run to preview)"))
+				return mutationError(cmd, "delete-rule", f.jsonOutput, op.NewConfirmationRequired("refusing to permanently delete a rule without --yes (use --dry-run to preview)"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			if err := client.DeleteRule(cmd.Context(), orgID, args[0]); err != nil {
@@ -353,7 +353,7 @@ func newCreateRawRuleCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create an organization rule without --yes (use --dry-run to preview)"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create an organization rule without --yes (use --dry-run to preview)"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			result, err := client.CreateRule(cmd.Context(), orgID, rule)
@@ -391,7 +391,7 @@ func newUpdateRawRuleCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to update an organization rule without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to update an organization rule without --yes"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			result, err := client.UpdateRule(cmd.Context(), orgID, args[0], rule)

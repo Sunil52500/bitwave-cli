@@ -489,7 +489,7 @@ func closeMutationResolved(cmd *op.Call, f closeMutationFlags, orgID, operation,
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return errors.New("refusing to change the organization without --yes (use --dry-run to preview)")
+		return op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)")
 	}
 	var raw []byte
 	if body != nil {

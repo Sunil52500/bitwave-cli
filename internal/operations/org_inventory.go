@@ -63,7 +63,7 @@ func newOrgInventoryCreateCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create an inventory view without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create an inventory view without --yes"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			result, err := client.CreateInventoryView(cmd.Context(), orgID, request)
@@ -136,7 +136,7 @@ func newOrgInventoryUpdateCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to start an inventory calculation without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to start an inventory calculation without --yes"))
 			}
 			result, err := client.TriggerInventoryViewUpdate(cmd.Context(), orgID, view.ID, request)
 			if err != nil {
@@ -207,7 +207,7 @@ func newOrgInventoryCancelCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to cancel an inventory calculation without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to cancel an inventory calculation without --yes"))
 			}
 			result, err := client.CancelInventoryViewUpdate(cmd.Context(), orgID, view.ID, strings.TrimSpace(args[1]))
 			if err != nil {
@@ -243,7 +243,7 @@ func newOrgInventoryDeleteCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: view})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to delete an inventory view without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to delete an inventory view without --yes"))
 			}
 			if err := client.DeleteInventoryView(cmd.Context(), orgID, view.ID); err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)
