@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	op "github.com/bitwave-io/bitwave-cli/internal/operation"
 )
 
 func TestAdminInputPreservesInvocationJSONNumbers(t *testing.T) {
@@ -156,7 +158,12 @@ func TestEveryAdminOperationCanBuildADryRunRequest(t *testing.T) {
 				args[index] = "test-" + name
 			}
 			args = append(args, "--org", "test-org", "--dry-run")
-			if operation.InputRequired {
+			if operation.Payload != nil {
+				args = append(args, "--data", sampleAdminPayload(t, operation.Payload))
+			} else if operation.Name == "system-job-run" {
+				// run must name a known job; the generic sample below is not one.
+				args = append(args, "--data", `{"systemJobId":"bulk-transaction","action":"ignore"}`)
+			} else if operation.InputRequired {
 				args = append(args, "--data", `{"test":true}`)
 			}
 			cmd.SetArgs(args)
@@ -172,4 +179,35 @@ func TestEveryAdminOperationCanBuildADryRunRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// sampleAdminPayload builds a payload that satisfies every required field of a
+// contract, so the generic dry-run sweep exercises contract-bearing operations.
+func sampleAdminPayload(t *testing.T, payload *op.Payload) string {
+	t.Helper()
+	sample := map[string]any{}
+	for _, field := range payload.Fields {
+		if !field.Required {
+			continue
+		}
+		switch field.Type {
+		case op.PayloadDate:
+			sample[field.Name] = "2026-04-01"
+		case op.PayloadBoolean:
+			sample[field.Name] = true
+		case op.PayloadInteger:
+			sample[field.Name] = 1
+		default:
+			sample[field.Name] = "sample"
+		}
+	}
+	// Keep date ordering valid for contracts with a start and an end.
+	if _, ok := sample["endSEC"]; ok {
+		sample["endSEC"] = "2026-10-15"
+	}
+	encoded, err := json.Marshal(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }

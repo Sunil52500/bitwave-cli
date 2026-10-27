@@ -31,6 +31,8 @@ type mutationEnvelope struct {
 	Operation     string       `json:"operation"`
 	Organization  string       `json:"organization"`
 	DryRun        bool         `json:"dryRun,omitempty"`
+	Submitted     *bool        `json:"submitted,omitempty"`
+	Note          string       `json:"note,omitempty"`
 	Request       any          `json:"request,omitempty"`
 	Result        any          `json:"result,omitempty"`
 	Error         *reportError `json:"error,omitempty"`
@@ -609,7 +611,7 @@ func newCategorizationOptionsCmd() *op.Definition {
 		Short: "Return LLM-friendly category, contact, connection, and payload choices",
 		RunE: func(cmd *op.Call, _ []string) error {
 			if limit <= 0 || limit > 500 {
-				return errors.New("--limit must be between 1 and 500")
+				return op.NewValidationError("--limit must be between 1 and 500")
 			}
 			resolvedOrg, err := resolveReportOrg(cmd.Context(), orgID)
 			if err != nil {

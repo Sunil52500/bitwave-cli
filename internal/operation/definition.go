@@ -43,6 +43,7 @@ type Definition struct {
 	parent                    *Definition
 	required                  map[string]bool
 	endpointParameters        map[string]bool
+	payload                   *Payload
 }
 
 func (d *Definition) Flags() *pflag.FlagSet {
@@ -178,3 +179,10 @@ func (c *Call) InOrStdin() io.Reader {
 	}
 	return c.Input
 }
+
+// SetPayload declares the contract for the JSON object passed with --data or
+// --input. Hosted adapters read it from the descriptor.
+func (d *Definition) SetPayload(p *Payload) { d.payload = p }
+
+// Payload returns the declared payload contract, or nil.
+func (d *Definition) Payload() *Payload { return d.payload }

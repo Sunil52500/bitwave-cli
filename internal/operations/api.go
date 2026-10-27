@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bitwave-io/bitwave-cli/internal/apierr"
 	"io"
 	"net/http"
 	"net/url"
@@ -366,10 +367,7 @@ func graphqlResponseError(data []byte) error {
 			messages = append(messages, item.Message)
 		}
 	}
-	if len(messages) == 0 {
-		return fmt.Errorf("Bitwave GraphQL returned %d error(s)", len(response.Errors))
-	}
-	return fmt.Errorf("Bitwave GraphQL: %s", strings.Join(messages, "; "))
+	return &apierr.GraphQLError{Messages: messages}
 }
 
 func graphQLEndpointPath(service string) (string, error) {

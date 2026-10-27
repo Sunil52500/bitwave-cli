@@ -135,7 +135,7 @@ transaction count for follow-up questions across any supported UI filter.`,
 
 func runTransactionReviewSummary(cmd *op.Call, f transactionReviewSummaryFlags) error {
 	if (f.from == "") != (f.to == "") {
-		return errors.New("--from and --to must be supplied together")
+		return op.NewValidationError("--from and --to must be supplied together")
 	}
 	if f.from != "" {
 		if err := validateExportDateRange(f.from, f.to, false); err != nil {
@@ -260,7 +260,7 @@ without selecting an accept or ignore action for the caller.`,
 
 func runTransactionReviewAnalyze(cmd *op.Call, args []string, f transactionReviewAnalyzeFlags) error {
 	if f.limit < 1 || f.limit > 100 {
-		return errors.New("--limit must be between 1 and 100")
+		return op.NewValidationError("--limit must be between 1 and 100")
 	}
 	orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
 	if err != nil {

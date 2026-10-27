@@ -1,7 +1,6 @@
 package operations
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -71,10 +70,10 @@ as the transaction UI without downloading matching transaction records.`,
 
 func runCountOrgTransactions(cmd *op.Call, f transactionCountFlags) error {
 	if len(uniqueNonEmpty(f.search)) > 5 {
-		return errors.New("--search may be supplied at most five times")
+		return op.NewValidationError("--search may be supplied at most five times")
 	}
 	if (f.from == "") != (f.to == "") {
-		return errors.New("--from and --to must be supplied together")
+		return op.NewValidationError("--from and --to must be supplied together")
 	}
 	if f.from != "" {
 		if err := validateExportDateRange(f.from, f.to, false); err != nil {
@@ -140,14 +139,14 @@ func transactionCountRange(cmd *op.Call, minName, minValue, maxName, maxValue st
 	if cmd.Flags().Changed(minName) {
 		value, err := strconv.ParseFloat(strings.TrimSpace(minValue), 64)
 		if err != nil {
-			return nil, fmt.Errorf("--%s must be a number", minName)
+			return nil, op.NewValidationError("--" + minName + " must be a number")
 		}
 		result.From = &value
 	}
 	if cmd.Flags().Changed(maxName) {
 		value, err := strconv.ParseFloat(strings.TrimSpace(maxValue), 64)
 		if err != nil {
-			return nil, fmt.Errorf("--%s must be a number", maxName)
+			return nil, op.NewValidationError("--" + maxName + " must be a number")
 		}
 		result.To = &value
 	}

@@ -113,5 +113,8 @@ type GraphQLError struct {
 }
 
 func (e *GraphQLError) Error() string {
+	if len(e.Messages) == 0 {
+		return "GraphQL: the server returned an error without a message"
+	}
 	return "GraphQL: " + strings.Join(e.Messages, "; ")
 }

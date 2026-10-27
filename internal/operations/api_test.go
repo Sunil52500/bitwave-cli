@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/bitwave-io/bitwave-cli/internal/apierr"
 )
 
 func TestAPIRequestBodyReadsInvocationInput(t *testing.T) {
@@ -93,5 +96,30 @@ func TestGraphQLResponseError(t *testing.T) {
 	}
 	if err := graphqlResponseError([]byte(`{"data":{"widgets":[]}}`)); err != nil {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestGraphQLResponseErrorIsTypedAndKeepsItsMessages(t *testing.T) {
+	err := graphqlResponseError([]byte(`{"errors":[{"message":"Job run not found"},{"message":""},{"message":"Denied"}]}`))
+	var typed *apierr.GraphQLError
+	if !errors.As(err, &typed) {
+		t.Fatalf("error %v is not a GraphQLError", err)
+	}
+	if len(typed.Messages) != 2 || typed.Messages[0] != "Job run not found" || typed.Messages[1] != "Denied" {
+		t.Fatalf("typed = %+v", typed)
+	}
+	if got := err.Error(); got != "GraphQL: Job run not found; Denied" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestGraphQLResponseErrorWithoutMessagesIsStillTypedAndReadable(t *testing.T) {
+	err := graphqlResponseError([]byte(`{"errors":[{}]}`))
+	var typed *apierr.GraphQLError
+	if !errors.As(err, &typed) || len(typed.Messages) != 0 {
+		t.Fatalf("error %v should be a GraphQLError with no messages", err)
+	}
+	if got := err.Error(); got != "GraphQL: the server returned an error without a message" {
+		t.Fatalf("got %q", got)
 	}
 }
