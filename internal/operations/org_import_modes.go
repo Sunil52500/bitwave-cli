@@ -317,7 +317,7 @@ func runDirectTransactionImport(cmd *op.Call, orgID string, analysis *directImpo
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: map[string]any{"plan": analysis.plan, "requests": requests}})
 	}
 	if !f.yes {
-		return importPlanFailure(cmd, operation, orgID, analysis.plan, errors.New("refusing to create organization transactions without --yes (use --dry-run to preview)"))
+		return importPlanFailure(cmd, operation, orgID, analysis.plan, op.NewConfirmationRequired("refusing to create organization transactions without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	if f.timeout > 0 {

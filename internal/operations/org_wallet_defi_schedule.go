@@ -79,7 +79,7 @@ func runOrgWalletDefiSchedule(cmd *op.Call, f orgWalletDefiScheduleFlags, args [
 			return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 		}
 		if !f.yes {
-			return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create sync schedules without --yes (use --dry-run to preview)"))
+			return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create sync schedules without --yes (use --dry-run to preview)"))
 		}
 		result, err := client.ScheduleDefiWalletsForNetwork(cmd.Context(), orgID, network, f.cadenceSeconds)
 		if err != nil {
@@ -103,7 +103,7 @@ func runOrgWalletDefiSchedule(cmd *op.Call, f orgWalletDefiScheduleFlags, args [
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview, Result: map[string]any{"wallet": wallet}})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create a sync schedule without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create a sync schedule without --yes (use --dry-run to preview)"))
 	}
 	result, err := client.ScheduleDefiWallet(cmd.Context(), orgID, wallet.ID, request)
 	if err != nil {

@@ -69,7 +69,7 @@ func newOrgWalletRollupSetCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the wallet rollup without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the wallet rollup without --yes"))
 			}
 			if err := client.UpsertWalletRollup(cmd.Context(), orgID, wallet.ID, request); err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)

@@ -145,7 +145,7 @@ func newOrgAccountingContactCreateCmd() *op.Definition {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: input})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes"))
 			}
 			_, client, err := accountingClient(cmd.Context(), orgID)
 			if err != nil {
@@ -213,7 +213,7 @@ func runContactUpdate(cmd *op.Call, f transactionMutationFlags, operation string
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: body})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes"))
 	}
 	_, client, err := accountingClient(cmd.Context(), orgID)
 	if err != nil {
@@ -377,7 +377,7 @@ func newOrgAccountingCategoryToggleCmd(name string, enabled bool) *op.Definition
 			return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 		}
 		if !f.yes {
-			return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes"))
+			return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes"))
 		}
 		_, client, err := accountingClient(cmd.Context(), orgID)
 		if err != nil {
@@ -412,7 +412,7 @@ func runDisableAllAccountingResources(cmd *op.Call, f transactionMutationFlags, 
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to disable all resources without --yes"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to disable all resources without --yes"))
 	}
 	_, client, err := accountingClient(cmd.Context(), orgID)
 	if err != nil {
@@ -522,7 +522,7 @@ func runCreateChartAccounts(cmd *op.Call, accounts []chartAccountInput, f transa
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	_, client, err := accountingClient(cmd.Context(), orgID)
 	if err != nil {

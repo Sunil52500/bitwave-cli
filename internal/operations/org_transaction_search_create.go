@@ -369,7 +369,7 @@ func runCreateInternalTransfer(cmd *op.Call, f internalTransferFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	result, err := client.CreateInternalTransfer(cmd.Context(), orgID, body)
 	if err != nil {
@@ -433,7 +433,7 @@ func executeCreateTransactions(cmd *op.Call, operation, orgID string, body []org
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	result, err := client.CreateTransactions(cmd.Context(), orgID, body)

@@ -252,7 +252,7 @@ func runOrgWalletsAdd(cmd *op.Call, f orgWalletAddFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, op.NewValidationError("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 
 	// Resolve the token once before fan-out. Refreshing and rewriting the same

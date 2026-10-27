@@ -40,3 +40,24 @@ func (e *BatchError) Error() string {
 }
 
 func (e *BatchError) Unwrap() []error { return e.Failures }
+
+// ConfirmationRequiredError is a mutation refused locally because the caller
+// did not confirm it (--yes). Nothing was sent, and the same request with the
+// confirmation is the correct next step, so callers must not treat it as an
+// invalid payload or an unknown outcome. Its message is static and safe to
+// display.
+type ConfirmationRequiredError struct {
+	message string
+}
+
+// NewConfirmationRequired must only be given a static, developer-authored message.
+func NewConfirmationRequired(message string) *ConfirmationRequiredError {
+	return &ConfirmationRequiredError{message: message}
+}
+
+func (e *ConfirmationRequiredError) Error() string {
+	if e == nil || e.message == "" {
+		return "refusing to change the organization without --yes"
+	}
+	return e.message
+}

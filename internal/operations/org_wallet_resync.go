@@ -1,7 +1,6 @@
 package operations
 
 import (
-	"errors"
 	"fmt"
 
 	op "github.com/bitwave-io/bitwave-cli/internal/operation"
@@ -35,7 +34,7 @@ it does not promise that a deliberately deleted transaction will be restored.`,
 				return mutationError(cmd, operation, f.jsonOutput, err)
 			}
 			if !f.dryRun && !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to reset wallet sync state without --yes (use --dry-run to preview)"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to reset wallet sync state without --yes (use --dry-run to preview)"))
 			}
 
 			result, err := client.FullWalletResync(cmd.Context(), orgID, wallet.ID, !f.dryRun)

@@ -253,7 +253,7 @@ func newReportCenterCancelCmd() *op.Definition {
 		Use: "cancel RUN_ID", Short: "Cancel a running report", Args: op.ExactArgs(1),
 		RunE: func(cmd *op.Call, args []string) error {
 			if !yes {
-				return errors.New("refusing to cancel a report without --yes")
+				return op.NewConfirmationRequired("refusing to cancel a report without --yes")
 			}
 			org, err := resolveReportOrg(cmd.Context(), orgID)
 			if err != nil {

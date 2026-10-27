@@ -260,7 +260,7 @@ func runTransactionStateMutation(cmd *op.Call, operation, transition string, tra
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 
 	client := newReportsClient(cmd.Context(), orgID)
@@ -357,7 +357,7 @@ func runCategorizeTransaction(cmd *op.Call, transactionID string, f categorizeFl
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	if err := client.CategorizeTransaction(cmd.Context(), orgID, transactionID, body); err != nil {
@@ -424,7 +424,7 @@ func runBulkCategorizeTransactions(cmd *op.Call, f bulkCategorizeFlags) error {
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	result, err := client.BulkCategorizeTransactions(cmd.Context(), orgID, body)

@@ -449,7 +449,7 @@ func runTransactionReviewResolve(cmd *op.Call, operation, action string, args []
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: "review-" + operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, "review-"+operation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, "review-"+operation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	result, err := client.ResolveTransactionReviews(cmd.Context(), orgID, action, transactionIDs)

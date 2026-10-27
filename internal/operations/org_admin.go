@@ -178,7 +178,7 @@ func runAdminOperation(cmd *op.Call, operation adminOperation, args []string, f 
 		mayWrite = graphqlMayWrite(operation.Document)
 	}
 	if mayWrite && !f.yes && !f.dryRun {
-		return mutationError(cmd, operation.Name, true, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, operation.Name, true, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 
 	client := newReportsClient(cmd.Context(), orgID)

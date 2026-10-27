@@ -414,7 +414,7 @@ func runImportUploadCommand(cmd *op.Call, path string, f transactionMutationFlag
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return importMutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create and upload an organization import without --yes (use --dry-run to preview)"))
+		return importMutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create and upload an organization import without --yes (use --dry-run to preview)"))
 	}
 	client.HTTPClient.Timeout = timeout
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -441,7 +441,7 @@ func runImportValidateCommand(cmd *op.Call, importID string, f importWaitFlags) 
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return importMutationError(cmd, operation, f.jsonOutput, errors.New("refusing to validate an organization import without --yes"))
+		return importMutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to validate an organization import without --yes"))
 	}
 	client.HTTPClient.Timeout = f.timeout
 	if err := client.ValidateImport(cmd.Context(), orgID, importID); err != nil {
@@ -477,7 +477,7 @@ func runImportCommitCommand(cmd *op.Call, importID string, f importWaitFlags) er
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return importMutationError(cmd, operation, f.jsonOutput, errors.New("refusing to create organization transactions without --yes"))
+		return importMutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to create organization transactions without --yes"))
 	}
 	client.HTTPClient.Timeout = f.timeout
 	current, err := client.Import(cmd.Context(), orgID, importID)
@@ -527,7 +527,7 @@ func runImportTransactionsCommand(cmd *op.Call, path string, f importWaitFlags, 
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return importMutationError(cmd, operation, f.jsonOutput, errors.New("refusing to upload and import organization transactions without --yes (use --dry-run to preview)"))
+		return importMutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to upload and import organization transactions without --yes (use --dry-run to preview)"))
 	}
 	client.HTTPClient.Timeout = f.timeout
 	ctx, cancel := context.WithTimeout(cmd.Context(), f.timeout)
