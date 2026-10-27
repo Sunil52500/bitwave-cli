@@ -1,6 +1,9 @@
 package operations
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Every operation that submits runSystemJob must be unable to start a contracted job without that job's
 // contract being enforced, whatever the operation is called.
@@ -70,5 +73,62 @@ func TestGenericRunChoosesItsContractFromTheJobItSends(t *testing.T) {
 	}
 	if err := rejectJobOverride(run, map[string]any{"systemJobId": rollupSystemJobID}); err != nil {
 		t.Errorf("run is the operation that chooses its job: %v", err)
+	}
+}
+
+func TestEveryKnownSystemJobHasAContractAndEveryFixedJobIsKnown(t *testing.T) {
+	for _, id := range knownSystemJobIDs {
+		if systemJobContract(id) == nil {
+			t.Errorf("%s has no contract", id)
+		}
+	}
+	for _, operation := range adminOperations() {
+		if operation.Document != gqlSystemJobRun {
+			continue
+		}
+		id, _ := operation.Defaults["systemJobId"].(string)
+		if id == "" {
+			if operation.Name != "system-job-run" {
+				t.Errorf("%s runs a system job without fixing one", operation.Name)
+			}
+			continue
+		}
+		if systemJobContract(id) == nil {
+			t.Errorf("%s fixes unknown job %s", operation.Name, id)
+		}
+		if action, ok := operation.Defaults["action"].(string); ok && id == bulkTransactionSystemJobID {
+			if err := bulkTransactionPayload().Validate(map[string]any{"action": action}); err != nil {
+				t.Errorf("%s fixes an action its own contract rejects: %v", operation.Name, err)
+			}
+		}
+	}
+}
+
+func TestSystemJobHelpStatesWhatEachCommandDoesAndItsDateContract(t *testing.T) {
+	want := map[string][]string{
+		"system-job-mark-reconciled":      {"Mark transactions as synced (reconciled) without sending them to the ERP", "YYYY-MM-DD", "omit for all wallets", "inclusive", "allowCategorizedModification  ignore only"},
+		"system-job-mark-unreconciled":    {"Undo mark-synced", "YYYY-MM-DD"},
+		"system-job-reconcile":            {"Sync (send) categorized transactions to the connected ERP", "real sync", "YYYY-MM-DD"},
+		"system-job-run":                  {"systemJobId is required", "bulk-transaction", "delete-wallet", "csvBulkAction", "markUnreconciled", "YYYY-MM-DD", "org admin system-jobs mark-reconciled"},
+		"system-job-reprice-failed":       {"YYYY-MM-DD", "omit for all wallets"},
+		"system-job-process-needs-review": {"accept", "closed-needs-review", "YYYY-MM-DD"},
+		"system-job-reprocess-rollups":    {"YYYY-MM-DD", "one wallet"},
+	}
+	found := 0
+	for _, operation := range adminOperations() {
+		texts, ok := want[operation.Name]
+		if !ok {
+			continue
+		}
+		found++
+		help := operation.Short + "\n" + operation.Long
+		for _, text := range texts {
+			if !strings.Contains(help, text) {
+				t.Errorf("%s help is missing %q", operation.Name, text)
+			}
+		}
+	}
+	if found != len(want) {
+		t.Fatalf("found %d of %d operations", found, len(want))
 	}
 }

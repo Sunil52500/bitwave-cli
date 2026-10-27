@@ -18,6 +18,9 @@ const (
 	PayloadInteger PayloadType = "integer"
 	// PayloadDate is a calendar date written YYYY-MM-DD.
 	PayloadDate PayloadType = "date"
+	// PayloadObject is a nested JSON object passed through unchanged; the backend
+	// validates its contents.
+	PayloadObject PayloadType = "object"
 )
 
 // PayloadField describes one allowed key of a request payload.
@@ -113,8 +116,15 @@ func checkValue(f PayloadField, value any) string {
 		if !ok {
 			return f.Name + " must be a calendar date string written YYYY-MM-DD"
 		}
+		if isAllDigits(strings.TrimSpace(text)) {
+			return f.Name + " must be a calendar date written YYYY-MM-DD, not Unix seconds"
+		}
 		if _, err := time.Parse("2006-01-02", text); err != nil {
 			return f.Name + " must be a real calendar date written YYYY-MM-DD"
+		}
+	case PayloadObject:
+		if _, ok := value.(map[string]any); !ok {
+			return f.Name + " must be a JSON object"
 		}
 	default:
 		text, ok := value.(string)
@@ -129,6 +139,18 @@ func checkValue(f PayloadField, value any) string {
 		}
 	}
 	return ""
+}
+
+func isAllDigits(text string) bool {
+	if text == "" {
+		return false
+	}
+	for _, r := range text {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // suggest points at a supported field whose name is close to a rejected one,
@@ -184,7 +206,7 @@ func (p *Payload) JSONSchema() map[string]any {
 			property["type"] = "string"
 			property["pattern"] = `^\d{4}-\d{2}-\d{2}$`
 			property["format"] = "date"
-		case PayloadBoolean, PayloadInteger:
+		case PayloadBoolean, PayloadInteger, PayloadObject:
 			property["type"] = string(f.Type)
 		default:
 			property["type"] = "string"

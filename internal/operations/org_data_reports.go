@@ -350,23 +350,23 @@ func resolveInventoryView(ref string, views []orgreports.InventoryView) (*orgrep
 func validateExportDateRange(from, to string, allDates bool) error {
 	if allDates {
 		if from != "" || to != "" {
-			return errors.New("--all-dates cannot be combined with --from or --to")
+			return op.NewValidationError("--all-dates cannot be combined with --from or --to")
 		}
 		return nil
 	}
 	if from == "" || to == "" {
-		return errors.New("both --from and --to are required (or use --all-dates for Transaction Export)")
+		return op.NewValidationError("both --from and --to are required (or use --all-dates for Transaction Export)")
 	}
 	fromDate, err := time.Parse("2006-01-02", from)
 	if err != nil || fromDate.Format("2006-01-02") != from {
-		return errors.New("--from must be a valid calendar date in YYYY-MM-DD format")
+		return op.NewValidationError("--from must be a valid calendar date in YYYY-MM-DD format")
 	}
 	toDate, err := time.Parse("2006-01-02", to)
 	if err != nil || toDate.Format("2006-01-02") != to {
-		return errors.New("--to must be a valid calendar date in YYYY-MM-DD format")
+		return op.NewValidationError("--to must be a valid calendar date in YYYY-MM-DD format")
 	}
 	if fromDate.After(toDate) {
-		return errors.New("--from must be on or before --to")
+		return op.NewValidationError("--from must be on or before --to")
 	}
 	return nil
 }

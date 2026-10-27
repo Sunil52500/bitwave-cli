@@ -33,6 +33,7 @@ type adminOperation struct {
 	Name          string
 	Use           string
 	Short         string
+	Long          string
 	Protocol      adminProtocol
 	Service       string
 	Method        string
@@ -127,6 +128,7 @@ func newAdminOperationCmd(operation adminOperation) *op.Definition {
 	cmd := &op.Definition{
 		Use:   operation.Use,
 		Short: operation.Short,
+		Long:  operation.Long,
 		Args:  op.ExactArgs(len(operation.ArgumentNames)),
 		RunE: func(cmd *op.Call, args []string) error {
 			return runAdminOperation(cmd, operation, args, f)
@@ -156,13 +158,17 @@ func runAdminOperation(cmd *op.Call, operation adminOperation, args []string, f 
 	if err != nil {
 		return err
 	}
+	// Payload checks run before the dry-run branch so a preview fails exactly as the real call would.
+	if err := requireKnownSystemJob(operation, input); err != nil {
+		return payloadError(cmd, operation.Name, orgID, err)
+	}
 	if operation.InputRequired && operation.Payload == nil && len(input) == 0 {
 		return errors.New("this operation requires a JSON object via --input or --data")
 	}
 	if err := rejectJobOverride(operation, input); err != nil {
 		return payloadError(cmd, operation.Name, orgID, err)
 	}
-	if payload, candidate := adminPayloadFor(operation, input); payload != nil {
+	if payload, candidate := adminPayloadFor(operation, withArgumentValues(operation, input, args)); payload != nil {
 		if err := payload.Validate(candidate); err != nil {
 			return payloadError(cmd, operation.Name, orgID, err)
 		}
@@ -363,6 +369,19 @@ func sortedAdminAreas() []string {
 	}
 	sort.Strings(areas)
 	return areas
+}
+
+// withArgumentValues adds positional arguments to a system job's input, since they are sent as variables too
+// (for example the wallet ID of `wallets delete WALLET_ID`). Positional values win, as they do in the request.
+func withArgumentValues(operation adminOperation, input map[string]any, args []string) map[string]any {
+	if operation.Document != gqlSystemJobRun || len(operation.ArgumentNames) == 0 {
+		return input
+	}
+	merged := cloneAdminInput(input)
+	for index, name := range operation.ArgumentNames {
+		merged[name] = args[index]
+	}
+	return merged
 }
 
 const dryRunNote = "Preview only. Nothing was submitted to Bitwave. A preview does not prove the backend will accept the request or that a job will start."

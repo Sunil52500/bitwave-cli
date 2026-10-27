@@ -50,20 +50,29 @@ func repricePayload() *op.Payload {
 	}
 }
 
-// systemJobContract returns the payload contract for a system job, or nil when the job has none yet.
+// systemJobContract returns the payload contract for a system job, or nil when the job is not one this CLI
+// knows. Every known job has a contract; requireKnownSystemJob refuses the rest before anything is sent.
 func systemJobContract(systemJobID string) *op.Payload {
 	switch systemJobID {
 	case rollupSystemJobID:
 		return rollupReprocessPayload()
-	case "reprice-failed-to-price-transactions", "reprice-priced-and-ready-to-price-transactions":
+	case repriceFailedSystemJobID, repriceReadySystemJobID:
 		return repricePayload()
+	case bulkTransactionSystemJobID:
+		return bulkTransactionPayload()
+	case processNeedsReviewSystemJobID:
+		return processNeedsReviewPayload()
+	case deleteWalletSystemJobID:
+		return deleteWalletPayload()
 	}
 	return nil
 }
 
 // adminPayloadFor returns the contract that applies to a request. For system-job operations it is chosen by the
 // job that will actually run (the operation's fixed job, or the systemJobId sent to the generic `run`), never by
-// the operation's name, so no operation can be used to start a contracted job without its contract.
+// the operation's name, so no operation can be used to start a contracted job without its contract. The candidate
+// is what will be sent: the operation's defaults overlaid with the caller's input, minus the job selector. The
+// action is checked only by contracts that declare it (bulk-transaction); other jobs ignore it.
 func adminPayloadFor(operation adminOperation, input map[string]any) (*op.Payload, map[string]any) {
 	if operation.Document != gqlSystemJobRun {
 		return operation.Payload, input
@@ -76,13 +85,17 @@ func adminPayloadFor(operation adminOperation, input map[string]any) (*op.Payloa
 	if payload == nil {
 		return nil, input
 	}
-	stripped := make(map[string]any, len(input))
-	for key, value := range input {
-		if key != "systemJobId" && key != "action" {
-			stripped[key] = value
+	checksAction := payloadHasField(payload, "action")
+	candidate := make(map[string]any, len(operation.Defaults)+len(input))
+	for _, source := range []map[string]any{operation.Defaults, input} {
+		for key, value := range source {
+			if key == "systemJobId" || (key == "action" && !checksAction) {
+				continue
+			}
+			candidate[key] = value
 		}
 	}
-	return payload, stripped
+	return payload, candidate
 }
 
 // rejectJobOverride stops --data from changing which job a fixed-job operation runs. `run` is the only

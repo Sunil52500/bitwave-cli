@@ -15,6 +15,7 @@ func testPayload() *Payload {
 			{Name: "flag", Type: PayloadBoolean, Description: "flag"},
 			{Name: "count", Type: PayloadInteger, Description: "count"},
 			{Name: "kind", Type: PayloadString, Enum: []string{"a", "b"}, Description: "kind"},
+			{Name: "filters", Type: PayloadObject, Description: "filters"},
 		},
 		Check: func(v map[string]any) string {
 			if v["startSEC"].(string) > v["endSEC"].(string) {
@@ -34,6 +35,7 @@ func TestPayloadAcceptsValidInput(t *testing.T) {
 	input["flag"] = true
 	input["count"] = json.Number("3")
 	input["kind"] = "a"
+	input["filters"] = map[string]any{"direction": "Inbound"}
 	if err := testPayload().Validate(input); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +54,9 @@ func TestPayloadRejectsBadInputWithSafeMessages(t *testing.T) {
 		{"unknown field", func(m map[string]any) { m["bogus"] = 1 }, `"bogus" is not a supported field`},
 		{"quoted boolean", func(m map[string]any) { m["flag"] = "true" }, "flag must be a JSON boolean"},
 		{"numeric date", func(m map[string]any) { m["startSEC"] = json.Number("1775000000") }, "startSEC must be a calendar date string"},
+		{"unix seconds as string", func(m map[string]any) { m["endSEC"] = "1785542399" }, "endSEC must be a calendar date written YYYY-MM-DD, not Unix seconds"},
+		{"object as string", func(m map[string]any) { m["filters"] = "Inbound" }, "filters must be a JSON object"},
+		{"object as array", func(m map[string]any) { m["filters"] = []any{"x"} }, "filters must be a JSON object"},
 		{"impossible date", func(m map[string]any) { m["endSEC"] = "2026-02-30" }, "endSEC must be a real calendar date"},
 		{"wrong date format", func(m map[string]any) { m["endSEC"] = "10/15/2026" }, "endSEC must be a real calendar date"},
 		{"fractional integer", func(m map[string]any) { m["count"] = json.Number("1.5") }, "count must be a JSON integer"},
@@ -114,6 +119,9 @@ func TestPayloadJSONSchemaMatchesContract(t *testing.T) {
 	start := schema["properties"].(map[string]any)["startSEC"].(map[string]any)
 	if start["format"] != "date" || start["type"] != "string" {
 		t.Fatalf("startSEC = %v", start)
+	}
+	if testPayload().JSONSchema()["properties"].(map[string]any)["filters"].(map[string]any)["type"] != "object" {
+		t.Fatal("filters must be an object")
 	}
 	if testPayload().JSONSchema()["properties"].(map[string]any)["flag"].(map[string]any)["type"] != "boolean" {
 		t.Fatal("flag must be boolean")

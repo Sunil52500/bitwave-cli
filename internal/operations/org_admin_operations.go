@@ -3,7 +3,6 @@ package operations
 import (
 	"net/http"
 
-	op "github.com/bitwave-io/bitwave-cli/internal/operation"
 	"github.com/bitwave-io/bitwave-cli/internal/orgreports"
 )
 
@@ -34,10 +33,6 @@ func withDefaults(operation adminOperation, defaults map[string]any) adminOperat
 }
 func withQuery(operation adminOperation, query ...string) adminOperation {
 	operation.DefaultQuery = query
-	return operation
-}
-func withPayload(operation adminOperation, payload *op.Payload) adminOperation {
-	operation.Payload = payload
 	return operation
 }
 func withNotes(operation adminOperation, notes string) adminOperation {
@@ -91,18 +86,18 @@ func adminOperations() []adminOperation {
 
 		// System jobs
 		adminGraphQLOperation("system-jobs", "system-jobs-list", "list", "List and paginate system jobs with status, parameters, timing, and errors", gqlSystemJobsList),
-		withInput(adminGraphQLOperation("system-jobs", "system-job-run", "run", "Run any Admin System Jobs action with its full filter contract", gqlSystemJobRun)),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-delete-transactions", "delete-transactions", "Delete matching transactions", gqlSystemJobRun), bulkTransactionDefaults("delete")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-ignore", "ignore", "Ignore matching transactions", gqlSystemJobRun), bulkTransactionDefaults("ignore")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-unignore", "unignore", "Unignore matching transactions", gqlSystemJobRun), bulkTransactionDefaults("unignore")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-reconcile", "reconcile", "Reconcile matching transactions", gqlSystemJobRun), bulkTransactionDefaults("reconcile")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-mark-reconciled", "mark-reconciled", "Mark matching transactions reconciled", gqlSystemJobRun), bulkTransactionDefaults("markReconciled")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-mark-unreconciled", "mark-unreconciled", "Mark matching transactions unreconciled", gqlSystemJobRun), bulkTransactionDefaults("markUnreconciled")),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-uncategorize", "uncategorize", "Uncategorize matching transactions", gqlSystemJobRun), bulkTransactionDefaults("uncategorize")),
-		withPayload(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-failed", "reprice-failed", "Reprice failed-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-failed-to-price-transactions", "action": "repriceFailedToPriceTransactions"}), repricePayload()),
-		withPayload(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-ready", "reprice-ready", "Reprice priced and ready-to-price transactions", gqlSystemJobRun), map[string]any{"systemJobId": "reprice-priced-and-ready-to-price-transactions", "action": "repricePricedAndReadyToPriceTransactions"}), repricePayload()),
-		withDefaults(adminGraphQLOperation("system-jobs", "system-job-process-needs-review", "process-needs-review", "Process needs-review transactions", gqlSystemJobRun), map[string]any{"systemJobId": "process-needs-review-transactions", "action": "processNeedsReviewTransactions", "resolution": "accept", "transactionState": "open-needs-review"}),
-		withPayload(withInput(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprocess-rollups", "reprocess-rollups", "Reprocess rollup-parent transactions for one wallet and date range", gqlSystemJobRun), map[string]any{"systemJobId": "reprocess-rollup-parent-txns", "action": "reprocessRollupParentTxns", "processNewTxns": true, "updateChildrenForExistingParent": false})), rollupReprocessPayload()),
+		withLong(withInput(adminGraphQLOperation("system-jobs", "system-job-run", "run", "Run a system job chosen by systemJobId (prefer the dedicated commands)", gqlSystemJobRun)), systemJobRunLong()),
+		bulkTransactionCommand("system-job-delete-transactions", "delete-transactions", "delete", "Delete matching transactions"),
+		bulkTransactionCommand("system-job-ignore", "ignore", "ignore", "Ignore matching transactions"),
+		bulkTransactionCommand("system-job-unignore", "unignore", "unignore", "Unignore matching transactions"),
+		bulkTransactionCommand("system-job-reconcile", "reconcile", "reconcile", "Sync (send) categorized transactions to the connected ERP — this is a real sync"),
+		bulkTransactionCommand("system-job-mark-reconciled", "mark-reconciled", "markReconciled", "Mark transactions as synced (reconciled) without sending them to the ERP"),
+		bulkTransactionCommand("system-job-mark-unreconciled", "mark-unreconciled", "markUnreconciled", "Undo mark-synced: mark transactions unreconciled again"),
+		bulkTransactionCommand("system-job-uncategorize", "uncategorize", "uncategorize", "Remove categorization from matching transactions"),
+		withLong(withJobContract(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-failed", "reprice-failed", "Reprice transactions that failed to price", gqlSystemJobRun), map[string]any{"systemJobId": repriceFailedSystemJobID, "action": "repriceFailedToPriceTransactions"})), repriceLong("Reprice transactions that failed to price.", "reprice-failed")),
+		withLong(withJobContract(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprice-ready", "reprice-ready", "Reprice transactions that are priced or ready to price", gqlSystemJobRun), map[string]any{"systemJobId": repriceReadySystemJobID, "action": "repricePricedAndReadyToPriceTransactions"})), repriceLong("Reprice transactions that are already priced or ready to price.", "reprice-ready")),
+		withLong(withJobContract(withDefaults(adminGraphQLOperation("system-jobs", "system-job-process-needs-review", "process-needs-review", "Accept or ignore pending Needs Review changes", gqlSystemJobRun), map[string]any{"systemJobId": processNeedsReviewSystemJobID, "action": "processNeedsReviewTransactions", "resolution": "accept", "transactionState": "open-needs-review"})), processNeedsReviewLong()),
+		withLong(withJobContract(withInput(withDefaults(adminGraphQLOperation("system-jobs", "system-job-reprocess-rollups", "reprocess-rollups", "Reprocess rollup-parent transactions for one wallet and date range", gqlSystemJobRun), map[string]any{"systemJobId": rollupSystemJobID, "action": "reprocessRollupParentTxns", "processNewTxns": true, "updateChildrenForExistingParent": false}))), reprocessRollupsLong()),
 		withInput(adminGraphQLOperation("system-jobs", "system-job-csv-categorize", "csv-categorize", "Start a previously uploaded categorization import", gqlRunImport)),
 
 		// Wallet administration

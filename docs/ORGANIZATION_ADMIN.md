@@ -80,8 +80,41 @@ bitwave org admin system-jobs ignore \
 bitwave org admin system-jobs list --query limit=50
 ```
 
-The generic `system-jobs run` command remains available for newly deployed job
-types before a dedicated command is released.
+Pick the dedicated command for what you want to do:
+
+| Goal | Command |
+|---|---|
+| Mark transactions synced (reconciled) without sending them to the ERP | `system-jobs mark-reconciled` |
+| Undo mark-synced | `system-jobs mark-unreconciled` |
+| Sync (send) categorized transactions to the connected ERP (a real sync) | `system-jobs reconcile` |
+| Ignore / unignore transactions | `system-jobs ignore` / `system-jobs unignore` |
+| Remove categorization | `system-jobs uncategorize` |
+| Delete transactions | `system-jobs delete-transactions` |
+| Reprice failed, or priced and ready, transactions | `system-jobs reprice-failed` / `system-jobs reprice-ready` |
+| Accept or ignore pending Needs Review changes | `system-jobs process-needs-review` |
+| Reprocess rollup parents for one wallet | `system-jobs reprocess-rollups` |
+
+Dates (`startSEC`, `endSEC`) are calendar days written `YYYY-MM-DD` in the
+organization's timezone and cover both whole days. Despite their names they are
+not Unix seconds. Omit `walletId` to cover every wallet (except
+`reprocess-rollups`, which requires one wallet).
+
+Every system-jobs command validates its payload locally before anything is
+sent, and `--dry-run` runs the same checks, so a dry run that fails names the
+fields to fix and a dry run that passes has a well-formed payload. A passing dry
+run does not prove the backend will accept the job. Fixed commands refuse a
+payload that tries to change their `systemJobId` or `action`.
+
+The generic `system-jobs run` requires `systemJobId`, which must be one of
+`bulk-transaction` (requires `action`: `delete`, `markReconciled`,
+`markUnreconciled`, `uncategorize`, `ignore`, `unignore`, `reconcile`, or
+`csvBulkAction` with `dataSourceId`), `delete-wallet` (requires `walletId`),
+`reprice-failed-to-price-transactions`,
+`reprice-priced-and-ready-to-price-transactions`,
+`process-needs-review-transactions` (requires `resolution` and
+`transactionState`), or `reprocess-rollup-parent-txns`. A missing or unknown
+`systemJobId` is refused locally with the list of valid jobs. A job type
+deployed after this CLI release needs a CLI update before `run` accepts it.
 
 ## Safety and credentials
 

@@ -166,7 +166,7 @@ func TestDescriptorsPublishThePayloadContractHostedToolsUse(t *testing.T) {
 	if byName[repriceTool].PayloadSchema == nil {
 		t.Fatal("reprice tool must publish a contract through the same mechanism")
 	}
-	if byName["bitwave_org_admin_system_jobs_ignore"].PayloadSchema != nil {
+	if byName["bitwave_org_admin_system_jobs_list"].PayloadSchema != nil {
 		t.Fatal("operations without a contract must not advertise one")
 	}
 }

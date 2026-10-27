@@ -160,6 +160,9 @@ func TestEveryAdminOperationCanBuildADryRunRequest(t *testing.T) {
 			args = append(args, "--org", "test-org", "--dry-run")
 			if operation.Payload != nil {
 				args = append(args, "--data", sampleAdminPayload(t, operation.Payload))
+			} else if operation.Name == "system-job-run" {
+				// run must name a known job; the generic sample below is not one.
+				args = append(args, "--data", `{"systemJobId":"bulk-transaction","action":"ignore"}`)
 			} else if operation.InputRequired {
 				args = append(args, "--data", `{"test":true}`)
 			}
