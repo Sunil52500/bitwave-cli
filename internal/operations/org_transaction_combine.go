@@ -95,7 +95,7 @@ func runCombineTransactions(cmd *op.Call, ids []string, f transactionMutationFla
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: combineOperation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, combineOperation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, combineOperation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	result, err := client.CombineTransactions(cmd.Context(), orgID, ids)
@@ -176,7 +176,7 @@ func runCombineGroups(cmd *op.Call, raw []string, f transactionMutationFlags) er
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: combineOperation, Organization: orgID, DryRun: true, Request: requests})
 	}
 	if !f.yes {
-		return mutationError(cmd, combineOperation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, combineOperation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	batch := combineBatchResult{Groups: len(groups), Results: make([]combineGroupResult, 0, len(groups)),
@@ -231,7 +231,7 @@ func runUncombineTransactions(cmd *op.Call, ids []string, f transactionMutationF
 		return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: uncombineOperation, Organization: orgID, DryRun: true, Request: preview})
 	}
 	if !f.yes {
-		return mutationError(cmd, uncombineOperation, f.jsonOutput, errors.New("refusing to change the organization without --yes (use --dry-run to preview)"))
+		return mutationError(cmd, uncombineOperation, f.jsonOutput, op.NewConfirmationRequired("refusing to change the organization without --yes (use --dry-run to preview)"))
 	}
 	client := newReportsClient(cmd.Context(), orgID)
 	results, err := client.UncombineTransactions(cmd.Context(), orgID, ids)
