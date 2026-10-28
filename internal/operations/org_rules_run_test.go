@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -224,5 +225,64 @@ func TestRuleBulkRunKeepsOtherOutcomes(t *testing.T) {
 	var result mutationEnvelope
 	if err := json.Unmarshal([]byte(output), &result); err != nil || result.Status != "success" {
 		t.Fatalf("envelope = %s err=%v", output, err)
+	}
+}
+
+// A bulk run with no --from-date is refused before anything is sent: the old
+// default (2000-01-01) made api-svc enqueue one unit of work per hour of the
+// organization's whole history in one request.
+func TestRuleBulkRunRefusesWithoutFromDate(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--yes", "--json"},
+		{"--yes", "--json", "--from-date", "  "},
+		{"--yes", "--json", "--to-date", "2026-01-31"},
+	} {
+		runtime := ruleRunRuntime(t, func(r *http.Request) (*http.Response, error) {
+			t.Errorf("nothing may be sent for a dateless bulk run: %s %s", r.Method, r.URL.String())
+			return nil, errors.New("unexpected request")
+		})
+		output, err := invokeRuleCommand(t, runtime, newBulkRunRulesCmd(), flags)
+		var validation *op.ValidationError
+		if !errors.As(err, &validation) || !strings.Contains(err.Error(), "--from-date is required") || !strings.Contains(err.Error(), "rule run") {
+			t.Fatalf("flags %v: err = %v, want a from-date validation error naming rule run", flags, err)
+		}
+		var result mutationEnvelope
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
+			t.Fatalf("decode %q: %v", output, err)
+		}
+		if result.Status == "success" || result.Error == nil || !strings.Contains(result.Error.Message, "--from-date is required") {
+			t.Fatalf("envelope = %s", output)
+		}
+	}
+}
+
+// The dry run also needs the range, so a preview never shows an unbounded
+// request.
+func TestRuleBulkRunDryRunNeedsFromDate(t *testing.T) {
+	runtime := bulkRunRuntime(t, http.StatusAccepted, `{"accepted":true}`)
+	if _, err := invokeRuleCommand(t, runtime, newBulkRunRulesCmd(), []string{"--dry-run", "--json"}); err == nil || !strings.Contains(err.Error(), "--from-date is required") {
+		t.Fatalf("err = %v", err)
+	}
+	output, err := invokeRuleCommand(t, runtime, newBulkRunRulesCmd(), []string{"--dry-run", "--json", "--from-date", "2026-01-01", "--to-date", "2026-01-31"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, `"status": "preview"`) {
+		t.Fatalf("output = %s", output)
+	}
+}
+
+func TestRuleBulkRunHelpSaysFromDateIsRequired(t *testing.T) {
+	cmd := newBulkRunRulesCmd()
+	for _, want := range []string{"--from-date is required", "one unit of work per hour", "parallel rule processing", "rule run"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("bulk-run help does not say %q", want)
+		}
+	}
+	if usage := cmd.Flags().Lookup("from-date").Usage; !strings.Contains(usage, "required") || strings.Contains(usage, "2000-01-01") {
+		t.Errorf("from-date usage = %q", usage)
+	}
+	if strings.Contains(cmd.Long, "\u2014") {
+		t.Error("bulk-run help contains an em dash")
 	}
 }

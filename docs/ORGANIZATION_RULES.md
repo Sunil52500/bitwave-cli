@@ -93,9 +93,12 @@ The GraphQL `runRulesForOrg` mutation is no longer used: on some hosts it is
 served by a legacy api-svc with the rules engine disabled, which accepts the
 mutation and never runs anything.
 
-`bulk-run` runs enabled rules over an inclusive date range in the
-organization's timezone. Its default start is `2000-01-01`; its default end is
-the current organization date. It is only available to organizations with
+`bulk-run` runs enabled rules over an explicit, inclusive date range in the
+organization's timezone. `--from-date` is required: the server splits the
+range into one unit of work per hour and enqueues all of them in one request,
+so an unbounded range (the old default start was `2000-01-01`) is a load
+hazard and is refused before anything is sent. `--to-date` defaults to the
+current organization date. Bulk Run is only available to organizations with
 parallel rule processing enabled; otherwise the API answers 403
 `feature_not_enabled` and the CLI says so and points at `rule run`.
 

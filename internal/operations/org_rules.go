@@ -103,12 +103,29 @@ func newBulkRunRulesCmd() *op.Definition {
 	var fromDate, toDate string
 	cmd := &op.Definition{
 		Use:   "bulk-run",
-		Short: "Run enabled rules over an inclusive date range",
+		Short: "Run enabled rules over an explicit, inclusive date range (needs parallel rule processing)",
+		Long: `Run the organization's enabled rules over an explicit date range, inclusive,
+in the organization's timezone. --from-date is required: the server splits the
+range into one unit of work per hour and enqueues all of them in one request,
+so an unbounded range (the organization's whole history) is a load hazard and
+is refused before anything is sent. --to-date defaults to today.
+
+Bulk Run is only available to organizations with parallel rule processing
+enabled; otherwise the API refuses it and the error says so. For the whole
+organization, or when the flag is missing, use rule run (the standard run,
+which needs no dates and no flag).
+
+The run is asynchronous and leaves no job to poll: measure its effect by
+re-reading the uncategorized count for the range once it has had time to
+finish. Use --dry-run to print the exact request. Use --yes to start the run.`,
 		RunE: func(cmd *op.Call, _ []string) error {
 			operation := "bulk-run-rules"
 			orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
 			if err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)
+			}
+			if strings.TrimSpace(fromDate) == "" {
+				return mutationError(cmd, operation, f.jsonOutput, errBulkRunNeedsFromDate)
 			}
 			client := newReportsClient(cmd.Context(), orgID)
 			org, err := client.Org(cmd.Context(), orgID)
@@ -122,9 +139,6 @@ func newBulkRunRulesCmd() *op.Definition {
 			location, err := time.LoadLocation(tz)
 			if err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, fmt.Errorf("load organization timezone %q: %w", tz, err))
-			}
-			if strings.TrimSpace(fromDate) == "" {
-				fromDate = "2000-01-01"
 			}
 			if strings.TrimSpace(toDate) == "" {
 				toDate = time.Now().In(location).Format("2006-01-02")
@@ -147,10 +161,15 @@ func newBulkRunRulesCmd() *op.Definition {
 		},
 	}
 	addMutationFlags(cmd, &f)
-	cmd.Flags().StringVar(&fromDate, "from-date", "", "Inclusive start date in the organization timezone (default 2000-01-01)")
+	cmd.Flags().StringVar(&fromDate, "from-date", "", "Inclusive start date in the organization timezone, YYYY-MM-DD (required: a bulk run must be bounded to a period; for the whole organization use rule run)")
 	cmd.Flags().StringVar(&toDate, "to-date", "", "Inclusive end date in the organization timezone (default current date)")
 	return cmd
 }
+
+// errBulkRunNeedsFromDate refuses a bulk run with no start date before
+// anything is sent. The old default, 2000-01-01, made api-svc enqueue one
+// unit of work per hour since then (about 235k) inside one request.
+var errBulkRunNeedsFromDate = op.NewValidationError("--from-date is required: a bulk run must be bounded to a period (YYYY-MM-DD); for the whole organization use rule run")
 
 func resolveRuleDates(fromDate, toDate, timezone string) (int64, int64, error) {
 	location, err := time.LoadLocation(timezone)
