@@ -10,6 +10,7 @@ import (
 	"time"
 
 	op "github.com/bitwave-io/bitwave-cli/internal/operation"
+	"github.com/bitwave-io/bitwave-cli/internal/orgreports"
 )
 
 type ruleSummary struct {
@@ -52,25 +53,45 @@ func newRunRulesCmd() *op.Definition {
 	var f transactionMutationFlags
 	cmd := &op.Definition{
 		Use:   "run",
-		Short: "Trigger an asynchronous organization rules run",
+		Short: "Start the organization's standard rules run (the app's Run rules)",
+		Long: `Start the organization's standard categorization rules run: every enabled
+rule over the transactions that still need categorization, the same run the
+Run rules button starts in the app. It needs no feature flag.
+
+The run is started through sync-coordinator (the organization's rules-workflow
+job) with overrideHeartbeat=true, so an explicit request starts a run even
+shortly after the last one finished. The run is asynchronous: the result
+carries the job run id and confirms the start, not the completion. Measure
+the effect by re-reading the uncategorized transaction count once the run
+has had time to finish.
+
+Use rule bulk-run for a run bounded to a date range; it is only available to
+organizations with parallel rule processing enabled.
+
+Use --dry-run to print the exact request. Use --yes to start the run.`,
 		RunE: func(cmd *op.Call, _ []string) error {
 			operation := "run-rules"
 			orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
 			if err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)
 			}
-			preview := map[string]any{"operation": "RunRulesForOrg", "variables": map[string]any{"orgId": orgID}}
+			preview := map[string]any{"method": "POST", "service": "sync-coordinator", "url": resolveCoreBaseURL(cmd.Context()) + orgreports.RulesRunInvokePath(orgID), "body": map[string]any{}}
 			if f.dryRun {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: preview})
 			}
 			if !f.yes {
-				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to trigger an organization-wide rules run without --yes"))
+				return mutationError(cmd, operation, f.jsonOutput, op.NewConfirmationRequired("refusing to start the organization's rules run without --yes (use --dry-run to preview)"))
 			}
 			client := newReportsClient(cmd.Context(), orgID)
-			if err := client.RunRules(cmd.Context(), orgID); err != nil {
-				return mutationError(cmd, operation, f.jsonOutput, err)
+			started, err := client.StartRulesRun(cmd.Context(), orgID)
+			if err != nil {
+				return mutationError(cmd, operation, f.jsonOutput, fmt.Errorf("start rules run: %w", err))
 			}
-			return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "success", Operation: operation, Organization: orgID, Result: map[string]any{"triggered": true, "asynchronous": true}})
+			envelope := mutationEnvelope{SchemaVersion: "1", Status: "success", Operation: operation, Organization: orgID, Request: preview, Result: map[string]any{
+				"triggered": true, "asynchronous": true, "jobRunId": started.JobRunID, "jobId": started.JobID, "message": started.Message,
+			}}
+			human := fmt.Sprintf("Rules run started for organization %s: job run %s (job %s). The run is asynchronous; re-read the uncategorized count once it has had time to finish.\n", orgID, started.JobRunID, started.JobID)
+			return outputMutation(cmd, f.jsonOutput, envelope, human)
 		},
 	}
 	addMutationFlags(cmd, &f)

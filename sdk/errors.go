@@ -3,6 +3,7 @@ package sdk
 import (
 	"github.com/bitwave-io/bitwave-cli/internal/apierr"
 	"github.com/bitwave-io/bitwave-cli/internal/operation"
+	"github.com/bitwave-io/bitwave-cli/internal/orgreports"
 )
 
 // APIError is a non-success HTTP API response. Both Invoke's error and the
@@ -33,3 +34,9 @@ type GraphQLError = apierr.GraphQLError
 // some items failed. Its Failures are reachable through errors.As, so a
 // per-item GraphQLError or APIError can be inspected; their text is untrusted.
 type BatchError = operation.BatchError
+
+// BulkRulesNotEnabledDetail is the static APIError detail the SDK returns
+// when rule bulk-run is refused with 403 feature_not_enabled, that is when the
+// organization lacks parallel rule processing. Hosted adapters may publish it
+// verbatim; it names the standard rules run as the alternative.
+const BulkRulesNotEnabledDetail = orgreports.BulkRulesNotEnabledDetail

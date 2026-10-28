@@ -3,6 +3,7 @@ package orgreports
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -66,10 +67,6 @@ const createRuleMutation = `mutation CreateRule($orgId: ID!, $rule: Rule!) {
 
 const updateRuleMutation = `mutation UpdateRule($orgId: ID!, $ruleId: ID!, $rule: Rule!) {
   updateRule(orgId: $orgId, ruleId: $ruleId, rule: $rule) { success errors }
-}`
-
-const runRulesMutation = `mutation RunRulesForOrg($orgId: ID!) {
-  runRulesForOrg(orgId: $orgId)
 }`
 
 const toggleRuleMutation = `mutation ToggleRuleStatus($orgId: ID!, $ruleId: ID!, $disabled: Boolean!) {
@@ -226,33 +223,48 @@ func (c *Client) UpdateRule(ctx context.Context, orgID, ruleID string, rule json
 	return &response.Data.UpdateRule, nil
 }
 
-func (c *Client) RunRules(ctx context.Context, orgID string) error {
-	request := map[string]any{
-		"operationName": "RunRulesForOrg",
-		"query":         runRulesMutation,
-		"variables":     map[string]any{"orgId": orgID},
-	}
-	data, err := c.doEndpoint(ctx, http.MethodPost, c.RulesMutationURL, request, true)
-	if err != nil {
-		return err
-	}
-	var response struct {
-		Data struct {
-			Success bool `json:"runRulesForOrg"`
-		} `json:"data"`
-		Errors []graphQLError `json:"errors"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("decode run rules response: %w", err)
-	}
-	if err := graphqlErrors(response.Errors); err != nil {
-		return err
-	}
-	if !response.Data.Success {
-		return fmt.Errorf("run rules request was rejected")
-	}
-	return nil
+// RulesRunStart is sync-coordinator's answer to invoking the organization's
+// rules-workflow job: the run it started, not its outcome.
+type RulesRunStart struct {
+	JobRunID string `json:"jobRunId"`
+	JobID    string `json:"jobId"`
+	JobName  string `json:"jobName,omitempty"`
+	Message  string `json:"message,omitempty"`
 }
+
+// RulesRunInvokePath is the sync-coordinator route that starts an
+// organization's standard rules run: the api-svc-rules runner's
+// rules-workflow job, whose id is deterministic ({orgId}.rules-workflow), so
+// no job lookup is needed. It is the route the app's "Run rules" button uses.
+// overrideHeartbeat=true cancels an in-flight run for the job and bypasses
+// the heartbeat guard, so an explicit request starts a run even shortly
+// after the last one finished (the web apps send the same).
+//
+// The GraphQL runRulesForOrg mutation is deliberately not used: it is served
+// by whichever api-svc the GraphQL route reaches, and on some hosts that is a
+// legacy api-svc with the rules engine disabled, which accepts the mutation
+// and never runs anything.
+func RulesRunInvokePath(orgID string) string {
+	return "/v3/orgs/" + url.PathEscape(orgID) + "/jobs/api-svc-rules/rules-workflow/" + url.PathEscape(orgID+".rules-workflow") + "/invoke?overrideHeartbeat=true"
+}
+
+// StartRulesRun asks sync-coordinator to start the organization's rules run
+// and returns the job run it started. The run itself is asynchronous.
+func (c *Client) StartRulesRun(ctx context.Context, orgID string) (*RulesRunStart, error) {
+	var started RulesRunStart
+	if err := c.doJSON(ctx, http.MethodPost, RulesRunInvokePath(orgID), map[string]any{}, &started); err != nil {
+		return nil, err
+	}
+	if started.JobRunID == "" {
+		return nil, fmt.Errorf("rules run response did not include a job run id")
+	}
+	return &started, nil
+}
+
+// BulkRulesNotEnabledDetail replaces the bulk-run endpoint's 403
+// feature_not_enabled detail. It is static so hosted adapters can publish it
+// verbatim, and it names the way out: the standard rules run needs no flag.
+const BulkRulesNotEnabledDetail = "Bulk Run is not available because parallel rule processing is not enabled for this organization; use rule run (the standard rules run) instead"
 
 func (c *Client) ExecuteBulkRules(ctx context.Context, orgID string, after, before int64) error {
 	if after <= 0 || before <= 0 || after > before {
@@ -263,7 +275,20 @@ func (c *Client) ExecuteBulkRules(ctx context.Context, orgID string, after, befo
 		"after":          after,
 		"before":         before,
 	}, true)
-	return err
+	return explainBulkRulesRefusal(err)
+}
+
+// explainBulkRulesRefusal turns the bulk-run endpoint's 403 for an
+// organization without the parallel-rule-processing flag (api-svc answers
+// code feature_not_enabled, message "Parallel rule processing is not enabled
+// for this organization") into BulkRulesNotEnabledDetail. Every other error
+// is returned unchanged.
+func explainBulkRulesRefusal(err error) error {
+	var apiError *apierr.Error
+	if !errors.As(err, &apiError) || apiError.Status != http.StatusForbidden || !strings.Contains(strings.ToLower(apiError.Detail), "parallel rule processing") {
+		return err
+	}
+	return &apierr.Error{Status: apiError.Status, Method: apiError.Method, URL: apiError.URL, Detail: BulkRulesNotEnabledDetail}
 }
 
 func (c *Client) ToggleRule(ctx context.Context, orgID, ruleID string, disabled bool) error {
