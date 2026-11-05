@@ -20,6 +20,7 @@ func inventoryAPIOperations() []adminOperation {
 		withInput(inventoryREST("views", "view-properties-update", "properties-update VIEW_ID", "Update inventory view properties", http.MethodPatch, "/orgs/{org}/inventory-views/{viewId}", "viewId")),
 		inventoryREST("views", "view-delete", "delete VIEW_ID", "Delete an inventory view", http.MethodDelete, "/orgs/{org}/inventory-views/{viewId}", "viewId"),
 		inventoryREST("runs", "view-updates-list", "list VIEW_ID", "List inventory calculation runs and errors", http.MethodGet, "/orgs/{org}/inventory-views/{viewId}/updates", "viewId"),
+		withLong(inventoryREST("runs", inventoryErrorTriageOperation, "error-triage VIEW_ID", "Explain the errored actions of the active inventory run: cause, evidence, and fix per group (submits a report run and waits for it)", http.MethodPost, "/orgs/{org}/inventory-views/{viewId}/error-triage", "viewId"), inventoryErrorTriageHelp),
 		inventoryREST("runs", "view-update-trigger", "trigger VIEW_ID", "Trigger the basic inventory update endpoint", http.MethodPost, "/orgs/{org}/inventory-views/{viewId}/updates", "viewId"),
 		withInput(inventoryREST("runs", "view-update-enhanced", "trigger-enhanced VIEW_ID", "Trigger an inventory update with an explicit request", http.MethodPost, "/orgs/{org}/inventory-views/{viewId}/update-requests", "viewId")),
 		inventoryREST("runs", "view-update-incremental", "trigger-incremental VIEW_ID RUN_ID START_DATE", "Trigger an incremental inventory update", http.MethodPost, "/orgs/{org}/inventory-views/{viewId}/{runId}/{startDate}/updates", "viewId", "runId", "startDate"),
@@ -113,6 +114,11 @@ JSON through --input or --data, support --dry-run, and require --yes.`,
 			area = &op.Definition{Use: operation.Area, Short: "Inventory " + operation.Area + " endpoints"}
 			areas[operation.Area] = area
 			cmd.AddCommand(area)
+		}
+		if operation.Name == inventoryErrorTriageOperation {
+			// The triage is a report run: submit, wait, read; not one generic request.
+			area.AddCommand(newInventoryErrorTriageCmd(operation))
+			continue
 		}
 		area.AddCommand(newAdminOperationCmd(operation))
 	}

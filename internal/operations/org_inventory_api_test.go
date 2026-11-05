@@ -10,7 +10,7 @@ import (
 func TestInventoryAPICoversGeneratedInventorySurface(t *testing.T) {
 	required := []string{
 		"views-list", "view-get", "view-create", "view-properties-update", "view-delete", "view-rows",
-		"view-updates-list", "view-update-trigger", "view-update-enhanced", "view-update-incremental",
+		"view-updates-list", "view-error-triage", "view-update-trigger", "view-update-enhanced", "view-update-incremental",
 		"view-update-cancel", "view-update-download-links",
 		"view-balance", "view-balance-paginated", "view-counts",
 		"action-columns", "action-column-values", "view-actions",
@@ -114,5 +114,44 @@ func TestInventoryAPIGraphQLConfigMutationUsesViewID(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"inventoryId": "view-1"`) || !strings.Contains(out.String(), "updateInventoryViewConfig") {
 		t.Fatalf("output = %s", out.String())
+	}
+}
+
+func TestInventoryAPIErrorTriageIsASubmitWithAnAsOfQuery(t *testing.T) {
+	cmd := testDefinition(newOrgInventoryAPICmd())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		"runs", "error-triage", "view-1", "--org", "org-1",
+		"--as-of", "2026-11-04", "--refresh", "--dry-run",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var result mutationEnvelope
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	request := result.Request.(map[string]any)
+	if request["method"] != "POST" || request["url"] != "https://api.bitwave.io/orgs/org-1/inventory-views/view-1/error-triage?asOf=2026-11-04&refresh=true" {
+		t.Fatalf("request = %#v", request)
+	}
+	if then, _ := request["then"].(string); !strings.Contains(then, "poll GET") {
+		t.Fatalf("preview does not say what follows the submit: %#v", request)
+	}
+	var triage adminOperation
+	for _, operation := range inventoryAPIOperations() {
+		if operation.Name == "view-error-triage" {
+			triage = operation
+		}
+	}
+	if triage.Area != "runs" || triage.Method != "POST" || triage.InputRequired {
+		t.Fatalf("operation = %#v", triage)
+	}
+	for _, want := range []string{"Read-only", "trade_legs_missing_wallet", "lot_selection_failed", "--as-of YYYY-MM-DD", "fix only when the\ncause is a fact", "attaches to the run already", "--submit-only", "--report-run"} {
+		if !strings.Contains(triage.Long, want) {
+			t.Errorf("long help lacks %q", want)
+		}
 	}
 }
