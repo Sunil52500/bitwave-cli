@@ -131,6 +131,14 @@ func parseWalletRollupRequest(data []byte) (orgreports.WalletRollupRequest, erro
 	if err := json.Unmarshal(data, &request); err != nil {
 		return request, op.NewValidationError("the wallet rollup request could not be read. Nothing was submitted.")
 	}
+	// The platform runs a rule without cadence hourly but its upsert requires
+	// the field, so a rule read back without one is sent as hour, as the web
+	// app does.
+	for i := range request.Rules {
+		if request.Rules[i].Cadence == "" {
+			request.Rules[i].Cadence = defaultWalletRollupCadence
+		}
+	}
 	return request, nil
 }
 
@@ -139,6 +147,7 @@ var (
 	walletRollupFingerPrints    = []string{"simpleOutgoing", "simpleIncoming", "simpleTrade", "outgoingNative", "outgoingToken", "incomingNative", "incomingToken", "onlyFee", "errored", "any"}
 	walletRollupActions         = []string{"rollupFromTo", "rollup", "rollupByAsset", "nonRollup", "ignore"}
 	walletRollupCadences        = []string{"hour", "day", "month"}
+	defaultWalletRollupCadence  = "hour"
 	walletRollupTradeSeparation = []string{"none", "direction", "assets"}
 	walletRollupRoundPeriods    = []string{"start-of-period", "end-of-period"}
 	walletRollupClassification  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -165,7 +174,7 @@ var walletRollupRuleFields = map[string]rollupField{
 	"classification":             {kind: rollupText, required: true},
 	"fingerPrint":                {kind: rollupText, required: true, enum: walletRollupFingerPrints},
 	"rollupAction":               {kind: rollupText, required: true, enum: walletRollupActions},
-	"cadence":                    {kind: rollupText, required: true, enum: walletRollupCadences},
+	"cadence":                    {kind: rollupText, enum: walletRollupCadences},
 	"metadata":                   {kind: rollupTextMap},
 	"involvedAccounts":           {kind: rollupTextList},
 	"counterParties":             {kind: rollupTextList},
@@ -351,7 +360,8 @@ Rule fields:
   rollupAction    rollupFromTo (one transaction per period, keeping from/to
                   addresses), rollup, rollupByAsset, nonRollup or ignore
                   (required)
-  cadence         day, hour or month (required)
+  cadence         day, hour or month; omitted or null means hour, which is
+                  how the platform runs a rule saved without one
   involvedAccounts, counterParties             lists of addresses
   separateByInvolvedAccounts, separateByCounterParty, counterPartyExcludeFees
                                                booleans

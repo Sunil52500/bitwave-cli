@@ -122,7 +122,7 @@ func TestRollupSetLocalRefusalsAreValidationErrors(t *testing.T) {
 		"bad type":         {`{"address":"0xabc","type":"babel","rules":[]}`, []string{"--input", "-", "--yes"}, []string{"type must be one of: rollup-by-time, wallet-rollup-by-time"}},
 		"rule not object":  {`{"address":"0xabc","type":"rollup-by-time","rules":["daily"]}`, []string{"--input", "-", "--yes"}, []string{"rules[0] must be a JSON object"}},
 		"bad enums":        {`{"address":"0xabc","type":"rollup-by-time","rules":[{"ruleName":"Sends","classification":"sends","fingerPrint":"outflow","rollupAction":"sum","cadence":"daily"}]}`, []string{"--input", "-", "--yes"}, []string{"rules[0].fingerPrint must be one of:", "rules[0].rollupAction must be one of:", "rules[0].cadence must be one of: hour, day, month"}},
-		"missing rule key": {`{"address":"0xabc","type":"rollup-by-time","rules":[{"ruleName":"Sends"}]}`, []string{"--input", "-", "--yes"}, []string{"rules[0].classification is required", "rules[0].fingerPrint is required", "rules[0].cadence is required"}},
+		"missing rule key": {`{"address":"0xabc","type":"rollup-by-time","rules":[{"ruleName":"Sends"}]}`, []string{"--input", "-", "--yes"}, []string{"rules[0].classification is required", "rules[0].fingerPrint is required", "rules[0].rollupAction is required"}},
 		"bad label":        {strings.Replace(rule(""), `"sends"`, `"daily sends"`, 1), []string{"--input", "-", "--yes"}, []string{"rules[0].classification may contain only letters, digits, - and _"}},
 		"unknown rule key": {rule(`,"priority":1`), []string{"--input", "-", "--yes"}, []string{`rules[0]: "priority" is not a supported field`}},
 		"seconds as text":  {rule(`,"startSec":"2026-01-01"`), []string{"--input", "-", "--yes"}, []string{"rules[0].startSec must be a JSON integer (Unix seconds)"}},
@@ -218,10 +218,34 @@ func TestRollupRuleFieldTypesAreChecked(t *testing.T) {
 
 func TestRollupRefusalShortensALongFieldName(t *testing.T) {
 	_, err := parseWalletRollupRequest([]byte(`{"address":"0xabc","type":"rollup-by-time","rules":[{"ruleName":"x"}],"` + strings.Repeat("a", 80) + `":1}`))
-	requireRollupValidation(t, err, `"`+strings.Repeat("a", 48)+`..." is not a supported field`, "address", "rules[0].cadence is required")
+	requireRollupValidation(t, err, `"`+strings.Repeat("a", 48)+`..." is not a supported field`, "address", "rules[0].fingerPrint is required")
 	if strings.Contains(err.Error(), strings.Repeat("a", 49)) {
 		t.Fatalf("long field name not shortened: %v", err)
 	}
 	_, err = parseWalletRollupRequest([]byte(`{"address":"","type":"rollup-by-time","rules":{}}`))
 	requireRollupValidation(t, err, "address must be the wallet's address as a non-empty string", "rules must be a JSON array of rule objects")
+}
+
+// api-svc runs a stored rule without cadence hourly (rollupRule.cadence ??
+// RollupPeriod.Hourly) but its upsert DTO requires the field. An old rule read
+// back without one must still save, as hourly, the way web-app-v3 sends it.
+func TestRollupSetDefaultsAMissingCadenceToHour(t *testing.T) {
+	for name, cadence := range map[string]string{"omitted": "", "null": `,"cadence":null`} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakeRollupAPI{}
+			body := `{"address":"0xabc","type":"rollup-by-time","rules":[` +
+				`{"ruleName":"Old","classification":"old","fingerPrint":"any","rollupAction":"rollup"` + cadence + `},` +
+				`{"ruleName":"Daily sends","classification":"daily-sends","fingerPrint":"simpleOutgoing","rollupAction":"rollupFromTo","cadence":"day"}]}`
+			if _, err := runRollupSet(t, api, body, "--input", "-", "--yes"); err != nil {
+				t.Fatal(err)
+			}
+			rules := api.upserts[0]["rules"].([]any)
+			if got := rules[0].(map[string]any)["cadence"]; got != "hour" {
+				t.Fatalf("missing cadence sent as %#v, want hour", got)
+			}
+			if got := rules[1].(map[string]any)["cadence"]; got != "day" {
+				t.Fatalf("explicit cadence sent as %#v, want day", got)
+			}
+		})
+	}
 }
