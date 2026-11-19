@@ -18,6 +18,7 @@ type BabelRollupRule struct {
 	InvolvedAccounts           []string          `json:"involvedAccounts,omitempty"`
 	CounterParties             []string          `json:"counterParties,omitempty"`
 	CounterPartyExcludeFees    bool              `json:"counterPartyExcludeFees,omitempty"`
+	InvolvedWalletsExcludeFees bool              `json:"involvedWalletsExcludeFees,omitempty"`
 	StartSEC                   *int64            `json:"startSec,omitempty"`
 	EndSEC                     *int64            `json:"endSec,omitempty"`
 	SeparateByInvolvedAccounts bool              `json:"separateByInvolvedAccounts,omitempty"`
