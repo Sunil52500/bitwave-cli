@@ -124,26 +124,6 @@ func newCloseDeleteCmd() *op.Definition {
 	})
 }
 
-func newCloseHardCmd() *op.Definition {
-	var f closeMutationFlags
-	var endDate string
-	cmd := &op.Definition{Use: "hard-close", Short: "Set the organization's hard-close date", Args: op.NoArgs, RunE: func(cmd *op.Call, _ []string) error {
-		if strings.TrimSpace(endDate) == "" {
-			return errors.New("--end-date is required")
-		}
-		query := `mutation updateOrg($orgId: ID!, $hardCloseDate: String!) { updateOrg(orgId: $orgId, hardCloseDate: $hardCloseDate) { id } }`
-		orgID, err := resolveReportOrg(cmd.Context(), f.orgID)
-		if err != nil {
-			return err
-		}
-		payload := map[string]any{"query": query, "variables": map[string]any{"orgId": orgID, "hardCloseDate": endDate}}
-		return closeMutationResolved(cmd, f, orgID, "set-hard-close-date", orgreports.APIServiceApp, http.MethodPost, "/graphql", payload, nil)
-	}}
-	addCloseMutationFlags(cmd, &f)
-	cmd.Flags().StringVar(&endDate, "end-date", "", "Hard-close date (normally YYYY-MM-DD)")
-	return cmd
-}
-
 func newCloseTaskCmd() *op.Definition {
 	cmd := &op.Definition{Use: "task", Aliases: []string{"tasks"}, Short: "Inspect, run, or review close tasks"}
 	cmd.AddCommand(newCloseTaskListCmd(), newCloseTaskGetCmd(), newCloseTaskRunCmd(), newCloseTaskUpdateCmd(), newCloseTaskAcceptCmd(), newCloseTaskUnacceptCmd())
@@ -501,6 +481,12 @@ func closeMutationResolved(cmd *op.Call, f closeMutationFlags, orgID, operation,
 	data, err := client.RawRequestBytes(cmd.Context(), service, method, path, raw, headers)
 	if err != nil {
 		return err
+	}
+	// GraphQL refuses a mutation with HTTP 200 and an errors array.
+	if path == "/graphql" {
+		if err := graphqlResponseError(data); err != nil {
+			return err
+		}
 	}
 	return writeAPIResponse(cmd, "", data)
 }
