@@ -69,6 +69,9 @@ func newOrgWalletRollupSetCmd() *op.Definition {
 			if err != nil {
 				return mutationError(cmd, operation, f.jsonOutput, err)
 			}
+			if err := bindWalletRollupAddress(&request, wallet); err != nil {
+				return mutationError(cmd, operation, f.jsonOutput, err)
+			}
 			if f.dryRun {
 				return writeJSON(cmd.OutOrStdout(), mutationEnvelope{SchemaVersion: "1", Status: "preview", Operation: operation, Organization: orgID, DryRun: true, Request: request})
 			}
@@ -197,10 +200,11 @@ func walletRollupProblems(body map[string]any) []string {
 	}
 	if address, present := body["address"]; present && address != nil {
 		if text, ok := address.(string); !ok || strings.TrimSpace(text) == "" {
-			problems = append(problems, "address must be the wallet's address as a non-empty string")
+			problems = append(problems, "address must be the wallet's address as a non-empty string, or left out to use the wallet's own")
 		}
-	} else {
-		problems = append(problems, "address is required (the wallet's address, from bitwave org wallets list)")
+	}
+	if _, pasted := body["rollupRules"]; pasted {
+		problems = append(problems, "this looks like rollup get's rollup object: send its rollupRules as rules, use type rollup-by-time, and drop walletId")
 	}
 	if kind, present := body["type"]; present && kind != nil {
 		if text, ok := kind.(string); !ok || !slices.Contains(walletRollupTypes, text) {
@@ -224,6 +228,36 @@ func walletRollupProblems(body map[string]any) []string {
 		}
 	}
 	return problems
+}
+
+// bindWalletRollupAddress fills an omitted address with the wallet's own, and
+// refuses one that is not among the wallet's addresses. The platform matches
+// a rule's transactions against the configuration's address, so another
+// wallet's address would save and never combine anything.
+func bindWalletRollupAddress(request *orgreports.WalletRollupRequest, wallet *orgreports.OrgWallet) error {
+	var addresses []string
+	for _, address := range append([]string{wallet.Address}, wallet.Addresses...) {
+		if address = strings.TrimSpace(address); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+	if len(addresses) == 0 {
+		return op.NewValidationError("this wallet has no address on record, so it cannot have a Babel rollup. Nothing was submitted.")
+	}
+	given := strings.TrimSpace(request.Address)
+	if given == "" {
+		request.Address = addresses[0]
+		return nil
+	}
+	for _, address := range addresses {
+		if strings.EqualFold(address, given) {
+			// Send the wallet's own spelling: the platform compares it with
+			// transaction addresses as stored.
+			request.Address = address
+			return nil
+		}
+	}
+	return op.NewValidationError("address is not one of this wallet's addresses. Rules only match transactions to or from the configured address, so this would save and never combine anything. Leave address out to use the wallet's own, or copy it from rollup get's wallet.address. Nothing was submitted.")
 }
 
 func walletRollupRuleProblems(at string, item any) []string {
@@ -341,13 +375,20 @@ wallet's whole rule list, so run bitwave org wallets rollup get first and send
 every rule you want to keep. Pass the request as a file with --input, or with
 --input - on stdin; --dry-run prints it without sending.
 
+To resend what rollup get printed: send its rollup.rollupRules as rules, take
+address from its wallet.address (or leave address out), use type
+rollup-by-time, and drop walletId. The rollup object itself is not a request.
+
 Request (a daily roll-up of plain sends):
 
-  {"address": "<the wallet's address, from bitwave org wallets list>",
-   "type": "rollup-by-time",
+  {"type": "rollup-by-time",
    "rules": [{"ruleName": "Daily sends", "classification": "daily-sends",
               "fingerPrint": "simpleOutgoing", "rollupAction": "rollupFromTo",
               "cadence": "day"}]}
+
+address is optional. Left out, it is the wallet's own address; given, it must
+be one of the wallet's addresses, because rules only match transactions to or
+from it.
 
 Rule fields:
   ruleName        display name (required)

@@ -22,6 +22,7 @@ const dailySendsRollup = `{"address":"` + rollupTestAddress + `","type":"rollup-
 // `org wallets rollup set` calls: the OrgWallets query holds one wallet, and
 // every rollup upsert body is recorded.
 type fakeRollupAPI struct {
+	wallet  string // the OrgWallets entry for w-1; the briber wallet when empty
 	upserts []map[string]any
 }
 
@@ -33,7 +34,11 @@ func (f *fakeRollupAPI) transport(t *testing.T) http.RoundTripper {
 		raw, _ := io.ReadAll(r.Body)
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/graphql" && bytes.Contains(raw, []byte("OrgWallets")):
-			return reply(http.StatusOK, `{"data":{"wallets":[{"id":"w-1","name":"Briber Wallet 1","address":"`+rollupTestAddress+`"}]}}`)
+			wallet := f.wallet
+			if wallet == "" {
+				wallet = `{"id":"w-1","name":"Briber Wallet 1","address":"` + rollupTestAddress + `"}`
+			}
+			return reply(http.StatusOK, `{"data":{"wallets":[`+wallet+`]}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/orgs/org-1/wallets/w-1/rollup":
 			var body map[string]any
 			if err := json.Unmarshal(raw, &body); err != nil {
@@ -117,7 +122,7 @@ func TestRollupSetLocalRefusalsAreValidationErrors(t *testing.T) {
 		"empty stdin":      {"", []string{"--input", "-", "--yes"}, []string{"empty"}},
 		"not json":         {"address: 0xabc", []string{"--input", "-", "--yes"}, []string{"not valid JSON"}},
 		"not an object":    {`[1,2]`, []string{"--input", "-", "--yes"}, []string{"must be a JSON object"}},
-		"guessed body":     {`{"direction":"outflow","period":"daily"}`, []string{"--input", "-", "--yes"}, []string{"address is required", "type is required", "rules is required", `"direction" is not a supported field`}},
+		"guessed body":     {`{"direction":"outflow","period":"daily"}`, []string{"--input", "-", "--yes"}, []string{"type is required", "rules is required", `"direction" is not a supported field`}},
 		"no rules":         {`{"address":"0xabc","type":"rollup-by-time","rules":[]}`, []string{"--input", "-", "--yes"}, []string{"rules must hold at least one rule"}},
 		"bad type":         {`{"address":"0xabc","type":"babel","rules":[]}`, []string{"--input", "-", "--yes"}, []string{"type must be one of: rollup-by-time, wallet-rollup-by-time"}},
 		"rule not object":  {`{"address":"0xabc","type":"rollup-by-time","rules":["daily"]}`, []string{"--input", "-", "--yes"}, []string{"rules[0] must be a JSON object"}},
@@ -128,7 +133,9 @@ func TestRollupSetLocalRefusalsAreValidationErrors(t *testing.T) {
 		"seconds as text":  {rule(`,"startSec":"2026-01-01"`), []string{"--input", "-", "--yes"}, []string{"rules[0].startSec must be a JSON integer (Unix seconds)"}},
 		"fee flag on from/to": {strings.Replace(rule(`,"involvedWalletsExcludeFees":true`), `"rollup"`, `"rollupFromTo"`, 1), []string{"--input", "-", "--yes"},
 			[]string{"rules[0].involvedWalletsExcludeFees is only supported when rollupAction is rollup"}},
-		"dry run checks too": {`{"period":"daily"}`, []string{"--input", "-", "--dry-run"}, []string{"address is required"}},
+		"dry run checks too": {`{"period":"daily"}`, []string{"--input", "-", "--dry-run"}, []string{"type is required"}},
+		"rollup get object": {`{"type":"wallet-rollup-by-time","walletId":"w-1","address":"0xabc","rollupRules":[{"ruleName":"Sends","classification":"sends","fingerPrint":"any","rollupAction":"rollup"}]}`, []string{"--input", "-", "--yes"},
+			[]string{"rules is required", "send its rollupRules as rules", "drop walletId"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			api := &fakeRollupAPI{}
@@ -156,7 +163,7 @@ func TestRollupSetRefusalNeverEchoesSubmittedValues(t *testing.T) {
 // fee flag must reach the platform instead of being dropped.
 func TestRollupSetForwardsACopiedBackRule(t *testing.T) {
 	api := &fakeRollupAPI{}
-	body := `{"address":"0xabc","type":"wallet-rollup-by-time","rules":[{"ruleName":"Fees","classification":"fees","fingerPrint":"onlyFee",` +
+	body := `{"address":"` + rollupTestAddress + `","type":"wallet-rollup-by-time","rules":[{"ruleName":"Fees","classification":"fees","fingerPrint":"onlyFee",` +
 		`"rollupAction":"rollup","cadence":"month","metadata":null,"involvedAccounts":["0x1"],"counterParties":null,"startSec":1767225600,"endSec":null,` +
 		`"separateByInvolvedAccounts":false,"separateByCounterParty":null,"separateByTrade":"direction","roundPeriod":"start-of-period",` +
 		`"counterPartyExcludeFees":null,"involvedWalletsExcludeFees":true}]}`
@@ -180,6 +187,8 @@ func TestRollupSetHelpDocumentsTheBody(t *testing.T) {
 		`"type": "rollup-by-time"`,
 		"simpleOutgoing", "rollupFromTo", "day, hour or month",
 		"involvedWalletsExcludeFees",
+		"send its rollup.rollupRules as rules", "take address from its wallet.address", "drop walletId",
+		"address is optional", "must be one of the wallet's addresses",
 	} {
 		if !strings.Contains(long, want) {
 			t.Fatalf("help does not mention %q:\n%s", want, long)
@@ -233,7 +242,7 @@ func TestRollupSetDefaultsAMissingCadenceToHour(t *testing.T) {
 	for name, cadence := range map[string]string{"omitted": "", "null": `,"cadence":null`} {
 		t.Run(name, func(t *testing.T) {
 			api := &fakeRollupAPI{}
-			body := `{"address":"0xabc","type":"rollup-by-time","rules":[` +
+			body := `{"address":"` + rollupTestAddress + `","type":"rollup-by-time","rules":[` +
 				`{"ruleName":"Old","classification":"old","fingerPrint":"any","rollupAction":"rollup"` + cadence + `},` +
 				`{"ruleName":"Daily sends","classification":"daily-sends","fingerPrint":"simpleOutgoing","rollupAction":"rollupFromTo","cadence":"day"}]}`
 			if _, err := runRollupSet(t, api, body, "--input", "-", "--yes"); err != nil {
@@ -247,5 +256,56 @@ func TestRollupSetDefaultsAMissingCadenceToHour(t *testing.T) {
 				t.Fatalf("explicit cadence sent as %#v, want day", got)
 			}
 		})
+	}
+}
+
+// The platform matches a rule's transactions against the configuration's
+// address, so another wallet's address saves and never combines anything. With
+// five briber wallets that mix-up is easy; it must be refused before sending.
+func TestRollupSetRefusesAnotherWalletsAddress(t *testing.T) {
+	other := strings.Replace(dailySendsRollup, rollupTestAddress, "0x2222222222222222222222222222222222222222", 1)
+	for name, args := range map[string][]string{"write": {"--input", "-", "--yes"}, "dry run": {"--input", "-", "--dry-run"}} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakeRollupAPI{}
+			_, err := runRollupSet(t, api, other, args...)
+			requireRollupValidation(t, err, "address is not one of this wallet's addresses", "wallet.address", "Nothing was submitted")
+			if strings.Contains(err.Error(), "0x2222") {
+				t.Fatalf("validation echoes the submitted address: %v", err)
+			}
+			if len(api.upserts) != 0 {
+				t.Fatalf("a refused request was sent: %#v", api.upserts)
+			}
+		})
+	}
+}
+
+func TestRollupSetBindsTheWalletsAddress(t *testing.T) {
+	second := "0x3333333333333333333333333333333333333333"
+	for name, tc := range map[string]struct{ wallet, body, want string }{
+		"omitted is filled": {"", strings.Replace(dailySendsRollup, `"address":"`+rollupTestAddress+`",`, "", 1), rollupTestAddress},
+		"case differs":      {"", strings.Replace(dailySendsRollup, rollupTestAddress, strings.ToUpper(rollupTestAddress), 1), rollupTestAddress},
+		"one of addresses": {`{"id":"w-1","name":"Briber Wallet 1","addresses":["` + rollupTestAddress + `","` + second + `"]}`,
+			strings.Replace(dailySendsRollup, rollupTestAddress, second, 1), second},
+		"omitted, addresses only": {`{"id":"w-1","name":"Briber Wallet 1","addresses":["` + second + `"]}`,
+			strings.Replace(dailySendsRollup, `"address":"`+rollupTestAddress+`",`, "", 1), second},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakeRollupAPI{wallet: tc.wallet}
+			if _, err := runRollupSet(t, api, tc.body, "--input", "-", "--yes"); err != nil {
+				t.Fatal(err)
+			}
+			if got := api.upserts[0]["address"]; got != tc.want {
+				t.Fatalf("sent address %#v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRollupSetRefusesAWalletWithoutAnAddress(t *testing.T) {
+	api := &fakeRollupAPI{wallet: `{"id":"w-1","name":"Exchange account"}`}
+	_, err := runRollupSet(t, api, dailySendsRollup, "--input", "-", "--yes")
+	requireRollupValidation(t, err, "no address on record")
+	if len(api.upserts) != 0 {
+		t.Fatalf("a refused request was sent: %#v", api.upserts)
 	}
 }
